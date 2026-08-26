@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+}
+
+// User roles in our system
+enum Role {
+  CUSTOMER
+  DRIVER
+  ADMIN
+}
+
+// Driver vehicle types
+enum VehicleType {
+  BICYCLE
+  MOTORCYCLE
+  CAR
+}
+
+// Delivery order status
+enum OrderStatus {
+  PENDING
+  ACCEPTED
+  PICKED_UP
+  DELIVERED
+  CANCELLED
+}
+
+// User model for customers, drivers, and admins
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(CUSTOMER)
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  orders Order[] @relation("CustomerOrders")
+  driver Driver?
+}
+
+// Driver details (only created for users who are drivers)
+model Driver {
+  id           String      @id @default(uuid())
+  userId       String      @unique
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vehicleType  VehicleType
+  licensePlate String?
+  isAvailable  Boolean     @default(true)
+  latitude     Float? // Live latitude for GPS tracking
+  longitude    Float? // Live longitude for GPS tracking
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  // Relations
+  deliveries   Order[]     @relation("DriverDeliveries")
+}
+
+// Order model for deliveries
+model Order {
+  id              String        @id @default(uuid())
+  customerId      String
+  customer        User          @relation("CustomerOrders", fields: [customerId], references: [id])
+  driverId        String?
+  driver          Driver?       @relation("DriverDeliveries", fields: [driverId], references: [id])
+  status          OrderStatus   @default(PENDING)
+  pickupAddress   String
+  deliveryAddress String
+  pickupLat       Float
+  pickupLng       Float
+  deliveryLat     Float
+  deliveryLng     Float
+  totalAmount     Float
+  items           Json // Stores list of items ordered (flexible JSON structure)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  // Relations
+  trackingLogs    TrackingLog[]
+}
+
+// History logs of driver locations for an active order
+model TrackingLog {
+  id        String   @id @default(uuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  latitude  Float
+  longitude Float
+  timestamp DateTime @default(now())
+}
