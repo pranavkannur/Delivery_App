@@ -3,6 +3,7 @@ generator client {
 }
 datasource db {
   provider = "postgresql"
+
 }
 
 // User roles in our system

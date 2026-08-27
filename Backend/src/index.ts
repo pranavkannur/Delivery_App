@@ -1,17 +1,26 @@
-import express from "express";
-import core from "cors";
-import dotenv from "dotenv";
+import express, { Request, Response } from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import authRoutes from './routes/authRoutes';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(core());
+// Middleware
+app.use(cors());
 app.use(express.json());
 
-app.get("/", (req , res ) => {
-    res.send("Hello from the backend");
+// Auth Routes
+app.use('/api/auth', authRoutes);
+
+// Health check / Root route
+app.get('/', (req: Request, res: Response) => {
+  res.send('Delivery App API is running');
 });
 
-app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
+// Start server
+app.listen(PORT, () => {
+  console.log(`🚀 Server is running on port ${PORT}`);
+});
