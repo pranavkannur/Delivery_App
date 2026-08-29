@@ -62,6 +62,7 @@ model Driver {
 }
 
 // Order model for deliveries
+// Order model for deliveries
 model Order {
   id              String        @id @default(uuid())
   customerId      String
@@ -76,10 +77,10 @@ model Order {
   deliveryLat     Float
   deliveryLng     Float
   totalAmount     Float
-  items           Json // Stores list of items ordered (flexible JSON structure)
+  items           Json          
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
-  // Relations
+  deliveryOtp     String? 
   trackingLogs    TrackingLog[]
 }
 
