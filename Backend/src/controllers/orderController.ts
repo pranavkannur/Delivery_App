@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/authMiddleware';
 import prisma from '../config/db';
+import { getIO } from '../services/socketService';
 
 // 1. Create a new Order (Customer only)
 export const createOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
@@ -46,6 +47,19 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
       },
     });
 
+    // ⚡ Real-Time Alert: Notify all connected drivers about a new available order
+    try {
+      getIO().emit('new_order_available', {
+        orderId: order.id,
+        pickupAddress: order.pickupAddress,
+        deliveryAddress: order.deliveryAddress,
+        totalAmount: order.totalAmount,
+        createdAt: order.createdAt,
+      });
+    } catch (socketErr) {
+      console.warn('Socket broadcast failed:', socketErr);
+    }
+
     res.status(201).json({
       message: 'Order placed successfully! Share the delivery OTP with the driver upon delivery.',
       order,
@@ -55,7 +69,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
   }
 };
 
-// 2. Get Available Orders (Drivers see all PENDING orders to pick from)
+// 2. Get Available Orders (Drivers see all PENDING orders)
 export const getAvailableOrders = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const orders = await prisma.order.findMany({
@@ -69,16 +83,14 @@ export const getAvailableOrders = async (req: AuthenticatedRequest, res: Respons
       orderBy: { createdAt: 'desc' },
     });
 
-    // Hide deliveryOtp from drivers
     const sanitizedOrders = orders.map(({ deliveryOtp, ...order }) => order);
-
     res.status(200).json({ availableOrders: sanitizedOrders });
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Error fetching available orders' });
   }
 };
 
-// 3. Get User Orders (Customer sees their orders, Driver sees their assigned orders)
+// 3. Get User Orders
 export const getOrders = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user?.id;
@@ -118,13 +130,11 @@ export const getOrders = async (req: AuthenticatedRequest, res: Response): Promi
         orderBy: { createdAt: 'desc' },
       });
 
-      // Hide deliveryOtp from driver view
       const sanitizedOrders = orders.map(({ deliveryOtp, ...order }) => order);
       res.status(200).json({ orders: sanitizedOrders });
       return;
     }
 
-    // Admin view
     const allOrders = await prisma.order.findMany({
       include: {
         customer: { select: { name: true, phone: true } },
@@ -149,7 +159,10 @@ export const acceptOrder = async (req: AuthenticatedRequest, res: Response): Pro
       return;
     }
 
-    const driver = await prisma.driver.findUnique({ where: { userId } });
+    const driver = await prisma.driver.findUnique({
+      where: { userId },
+      include: { user: { select: { name: true, phone: true } } },
+    });
     if (!driver) {
       res.status(404).json({ error: 'Driver profile not found' });
       return;
@@ -173,6 +186,22 @@ export const acceptOrder = async (req: AuthenticatedRequest, res: Response): Pro
         status: 'ACCEPTED',
       },
     });
+
+    // ⚡ Real-Time Alert: Notify the customer that a driver accepted their order
+    try {
+      getIO().to(`order_${orderId}`).emit('order_status_update', {
+        orderId,
+        status: 'ACCEPTED',
+        driver: {
+          name: driver.user.name,
+          phone: driver.user.phone,
+          vehicleType: driver.vehicleType,
+          licensePlate: driver.licensePlate,
+        },
+      });
+    } catch (socketErr) {
+      console.warn('Socket broadcast failed:', socketErr);
+    }
 
     const { deliveryOtp, ...sanitized } = updatedOrder;
     res.status(200).json({
@@ -208,6 +237,16 @@ export const updateOrderStatus = async (req: AuthenticatedRequest, res: Response
       where: { id: orderId },
       data: { status: 'PICKED_UP' },
     });
+
+    // ⚡ Real-Time Alert: Notify customer that their food/package was picked up
+    try {
+      getIO().to(`order_${orderId}`).emit('order_status_update', {
+        orderId,
+        status: 'PICKED_UP',
+      });
+    } catch (socketErr) {
+      console.warn('Socket broadcast failed:', socketErr);
+    }
 
     const { deliveryOtp, ...sanitized } = updatedOrder;
     res.status(200).json({
@@ -261,6 +300,16 @@ export const completeDelivery = async (req: AuthenticatedRequest, res: Response)
         data: { isAvailable: true },
       }),
     ]);
+
+    // ⚡ Real-Time Alert: Notify customer that delivery is complete!
+    try {
+      getIO().to(`order_${orderId}`).emit('order_status_update', {
+        orderId,
+        status: 'DELIVERED',
+      });
+    } catch (socketErr) {
+      console.warn('Socket broadcast failed:', socketErr);
+    }
 
     res.status(200).json({
       message: '🎉 Order delivered successfully! Handover verified via OTP.',
