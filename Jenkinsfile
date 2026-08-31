@@ -3,13 +3,15 @@ pipeline {
 
     environment {
         DOCKER_BUILDKIT = '1'
+        DATABASE_URL = credentials('DATABASE_URL')
+        JWT_SECRET = credentials('JWT_SECRET')
     }
 
     stages {
         stage('Checkout Code') {
             steps {
                 echo '📦 Cloning repository from GitHub...'
-                git branch: 'main', url: 'https://github.com/pranavkannur/Delivery_App.git'
+                checkout scm
             }
         }
 
@@ -22,14 +24,14 @@ pipeline {
 
         stage('Setup Environment & Deploy') {
             steps {
-                echo '🔐 Creating production environment variables...'
+                echo '🔐 Injecting secure production credentials...'
                 sh '''
                     cat <<EOF > Backend/.env
-PORT=5000
-DATABASE_URL=postgres://avnadmin:AVNS_d7Nt00KD0ckOfRfHTBx@app-dy-kannurpranav67-f7e2.b.aivencloud.com:11978/defaultdb?sslmode=no-verify
-JWT_SECRET=a_very_long_and_secure_secret_key_for_delivery_app
-NODE_ENV=production
-EOF
+                    PORT=5000
+                    DATABASE_URL=${DATABASE_URL}
+                    JWT_SECRET=${JWT_SECRET}
+                    NODE_ENV=production
+                    EOF
                 '''
                 echo '🚀 Deploying Production Containers...'
                 sh 'docker compose down || true'
