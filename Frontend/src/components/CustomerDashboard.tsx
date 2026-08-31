@@ -4,7 +4,7 @@ import { socket } from '../services/socket';
 import type { Order } from '../types';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import L from 'leaflet';
-import { Package, Search, KeyRound, RefreshCw, Send, ArrowRight, Clock, MapPin } from 'lucide-react';
+import { Package, Search, KeyRound, RefreshCw, ArrowRight, Clock } from 'lucide-react';
 
 // Custom Marker Icons
 const pickupIcon = new L.Icon({

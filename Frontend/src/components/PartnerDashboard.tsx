@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import type { User, Order } from '../types';
-import { Store, Package, Clock, RefreshCw, Send, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Store, Package,  RefreshCw, ArrowRight } from 'lucide-react';
 
 interface PartnerDashboardProps {
   user: User;

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import { socket } from '../services/socket';
 import type { Order, User } from '../types';
-import { Truck, CheckCircle2, Navigation, RefreshCw, KeyRound, AlertCircle, ArrowRight, MapPin, Package } from 'lucide-react';
+import { Truck, CheckCircle2, Navigation, RefreshCw, KeyRound, AlertCircle, ArrowRight, Package } from 'lucide-react';
 
 interface DriverDashboardProps {
   user: User;

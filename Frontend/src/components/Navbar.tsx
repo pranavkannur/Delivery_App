@@ -1,6 +1,6 @@
 import React from 'react';
 import type { User } from '../types';
-import { LogOut, User as UserIcon, Shield, Truck } from 'lucide-react';
+import { LogOut, User as UserIcon, Truck } from 'lucide-react';
 
 interface NavbarProps {
   user: User;

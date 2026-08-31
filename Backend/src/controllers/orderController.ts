@@ -152,7 +152,7 @@ export const getOrders = async (req: AuthenticatedRequest, res: Response): Promi
 export const acceptOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user?.id;
-    const { orderId } = req.params;
+    const orderId = req.params.orderId as string;
 
     if (!userId) {
       res.status(401).json({ error: 'Unauthorized' });
@@ -217,7 +217,7 @@ export const acceptOrder = async (req: AuthenticatedRequest, res: Response): Pro
 export const updateOrderStatus = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user?.id;
-    const { orderId } = req.params;
+    const orderId = req.params.orderId as string;
     const { status } = req.body;
 
     if (status !== 'PICKED_UP') {
@@ -262,7 +262,7 @@ export const updateOrderStatus = async (req: AuthenticatedRequest, res: Response
 export const completeDelivery = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user?.id;
-    const { orderId } = req.params;
+    const orderId = req.params.orderId as string;
     const { otp } = req.body;
 
     if (!otp) {
