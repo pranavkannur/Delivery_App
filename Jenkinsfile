@@ -27,11 +27,11 @@ pipeline {
                 echo '🔐 Injecting secure production credentials...'
                 sh '''
                     cat <<EOF > Backend/.env
-                    PORT=5000
-                    DATABASE_URL=${DATABASE_URL}
-                    JWT_SECRET=${JWT_SECRET}
-                    NODE_ENV=production
-                    EOF
+PORT=5000
+DATABASE_URL=${DATABASE_URL}
+JWT_SECRET=${JWT_SECRET}
+NODE_ENV=production
+EOF
                 '''
                 echo '🚀 Deploying Production Containers...'
                 sh 'docker compose down || true'
