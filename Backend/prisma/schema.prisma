@@ -11,6 +11,7 @@ enum Role {
   CUSTOMER
   DRIVER
   ADMIN
+  PARTNER
 }
 
 // Driver vehicle types

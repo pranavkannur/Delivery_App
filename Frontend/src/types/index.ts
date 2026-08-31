@@ -1,4 +1,4 @@
-export type Role = 'CUSTOMER' | 'DRIVER' | 'ADMIN';
+export type Role = 'CUSTOMER' | 'DRIVER' | 'ADMIN' | 'PARTNER';
 export type VehicleType = 'BICYCLE' | 'MOTORCYCLE' | 'CAR';
 export type OrderStatus = 'PENDING' | 'ACCEPTED' | 'PICKED_UP' | 'DELIVERED' | 'CANCELLED';
 
@@ -8,6 +8,7 @@ export interface User {
   name: string;
   role: Role;
   phone?: string;
+  storeName?: string;
   driver?: {
     id: string;
     vehicleType: VehicleType;
@@ -35,7 +36,7 @@ export interface Order {
   deliveryLng: number;
   totalAmount: number;
   items: OrderItem[];
-  deliveryOtp?: string; // Visible only to customer who created it
+  deliveryOtp?: string;
   createdAt: string;
   updatedAt: string;
   customer?: {
