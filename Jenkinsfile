@@ -28,8 +28,8 @@ pipeline {
                 sh '''
                     cat <<EOF > Backend/.env
 PORT=5000
-DATABASE_URL=postgres://avnadmin:AVNS_d7Nt00KD0ckOfRfHTBx@app-dy-kannurpranav67-f7e2.b.aivencloud.com:11978/defaultdb?sslmode=no-verify
-JWT_SECRET=a_very_long_and_secure_secret_key_for_delivery_app
+DATABASE_URL=${DATABASE_URL}
+JWT_SECRET=${JWT_SECRET}
 NODE_ENV=production
 EOF
                 '''
