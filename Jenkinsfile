@@ -8,53 +8,42 @@ pipeline {
     stages {
         stage('Checkout Code') {
             steps {
-                echo '📦 Checking out repository from Git...'
-                checkout scm
+                echo '📦 Cloning repository from GitHub...'
+                git branch: 'main', url: 'https://github.com/pranavkannur/Delivery_App.git'
             }
         }
 
-        stage('Build & Test Backend') {
+        stage('Build Docker Containers') {
             steps {
-                echo '⚙️ Building Node.js Backend...'
-                dir('Backend') {
-                    sh 'npm ci'
-                    sh 'npx prisma generate'
-                    sh 'npm run build'
-                }
-            }
-        }
-
-        stage('Build & Test Frontend') {
-            steps {
-                echo '🎨 Building React Frontend with Vite & Tailwind...'
-                dir('Frontend') {
-                    sh 'npm ci'
-                    sh 'npm run build'
-                }
-            }
-        }
-
-        stage('Build Docker Images') {
-            steps {
-                echo '🐳 Building Docker Containers with Docker Compose...'
+                echo '🐳 Building Multi-Container Docker Stack...'
                 sh 'docker compose build'
             }
         }
 
-        stage('Deploy Containers') {
+        stage('Setup Environment & Deploy') {
             steps {
-                echo '🚀 Deploying Application with Docker Compose...'
-                sh 'docker compose up -d'
+                echo '🔐 Creating production environment variables...'
+                sh '''
+                    cat <<EOF > Backend/.env
+PORT=5000
+DATABASE_URL=postgres://avnadmin:AVNS_d7Nt00KD0ckOfRfHTBx@app-dy-kannurpranav67-f7e2.b.aivencloud.com:11978/defaultdb?sslmode=no-verify
+JWT_SECRET=a_very_long_and_secure_secret_key_for_delivery_app
+NODE_ENV=production
+EOF
+                '''
+                echo '🚀 Deploying Production Containers...'
+                sh 'docker compose down || true'
+                sh 'docker compose up -d --remove-orphans --force-recreate'
             }
         }
     }
 
     post {
         success {
-            echo '🎉 CI/CD Pipeline Completed Successfully! Application is LIVE.'
+            echo '🎉 Jenkins CI/CD Pipeline Succeeded! Delivery App is LIVE.'
         }
         failure {
-            echo '❌ Pipeline Failed! Please check the build logs.'
+            echo '❌ Pipeline Failed! Check console output for logs.'
         }
     }
 }
