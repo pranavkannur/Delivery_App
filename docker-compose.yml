@@ -3,7 +3,6 @@ services:
     build:
       context: ./Backend
       dockerfile: Dockerfile
-    container_name: delivery_backend
     restart: always
     ports:
       - "5000:5000"
@@ -17,7 +16,6 @@ services:
     build:
       context: ./Frontend
       dockerfile: Dockerfile
-    container_name: delivery_frontend
     restart: always
     ports:
       - "80:80"

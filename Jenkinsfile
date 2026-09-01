@@ -33,7 +33,7 @@ JWT_SECRET=${JWT_SECRET}
 NODE_ENV=production
 EOF
                 '''
-                echo '🚀 Deploying Production Containers...'
+                echo '🚀 Deploying Production Containers with Docker Compose...'
                 sh 'docker compose down || true'
                 sh 'docker compose up -d --remove-orphans --force-recreate'
             }
