@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import { socket } from '../services/socket';
 import type { Order, User } from '../types';
-import { Truck, CheckCircle2, Navigation, RefreshCw, KeyRound, AlertCircle, ArrowRight, Package } from 'lucide-react';
+import { Truck, CheckCircle2, Navigation, RefreshCw, KeyRound, AlertCircle, ArrowRight, Package, Radio } from 'lucide-react';
 
 interface DriverDashboardProps {
   user: User;
@@ -13,6 +13,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
   const [myOrders, setMyOrders] = useState<Order[]>([]);
   const [otpInput, setOtpInput] = useState<{ [orderId: string]: string }>({});
   const [isSimulatingGps, setIsSimulatingGps] = useState(false);
+  const [isRealGpsBroadcasting, setIsRealGpsBroadcasting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -26,7 +27,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
       ]);
       setAvailableOrders(availRes.data.availableOrders);
       setMyOrders(myRes.data.orders);
-    } catch (err: any) {
+    } catch {
       setError('Error fetching orders');
     } finally {
       setLoading(false);
@@ -46,7 +47,6 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
     };
   }, []);
 
-  // 1. Accept Order
   const handleAcceptOrder = async (orderId: string) => {
     try {
       await api.put(`/orders/${orderId}/accept`);
@@ -57,7 +57,6 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
     }
   };
 
-  // 2. Mark Picked Up
   const handleMarkPickedUp = async (orderId: string) => {
     try {
       await api.put(`/orders/${orderId}/status`, { status: 'PICKED_UP' });
@@ -68,7 +67,6 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
     }
   };
 
-  // 3. Complete Delivery with Customer OTP
   const handleCompleteDelivery = async (orderId: string) => {
     const otp = otpInput[orderId];
     if (!otp) {
@@ -85,9 +83,9 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
     }
   };
 
-  // 4. GPS Simulation (Emits live moving coordinates to the Customer's map)
   const activeOrder = myOrders.find((o) => o.status === 'ACCEPTED' || o.status === 'PICKED_UP');
 
+  // 1. Simulated GPS (moves mathematically along route)
   useEffect(() => {
     if (!isSimulatingGps || !activeOrder) return;
 
@@ -111,7 +109,33 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isSimulatingGps, activeOrder]);
+  }, [isSimulatingGps, activeOrder, user]);
+
+  // 2. Real Device GPS Stream (watches live phone/laptop GPS coordinates)
+  useEffect(() => {
+    if (!isRealGpsBroadcasting || !activeOrder) return;
+
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser');
+      return;
+    }
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        socket.emit('driver_location_update', {
+          orderId: activeOrder.id,
+          driverId: user.driver?.id || user.id,
+          latitude,
+          longitude,
+        });
+      },
+      (err) => console.error('GPS Watch error:', err),
+      { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [isRealGpsBroadcasting, activeOrder, user]);
 
   return (
     <div className="min-h-[calc(100vh-65px)] bg-[#ececee] p-6 relative font-['Inter',sans-serif]">
@@ -164,18 +188,34 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
                 </h2>
               </div>
 
-              {/* Live GPS Broadcast Button */}
-              <button
-                onClick={() => setIsSimulatingGps(!isSimulatingGps)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold tracking-wider uppercase transition shadow-sm ${
-                  isSimulatingGps
-                    ? 'bg-red-600 text-white animate-pulse'
-                    : 'bg-black hover:bg-[#27272a] text-white'
-                }`}
-              >
-                <Navigation className="w-3.5 h-3.5" />
-                {isSimulatingGps ? 'STOP GPS BROADCAST' : 'START LIVE GPS BROADCAST'}
-              </button>
+              {/* GPS Broadcasting Controls (Real Device vs Simulated) */}
+              <div className="flex items-center gap-2">
+                {/* Real GPS Toggle */}
+                <button
+                  onClick={() => setIsRealGpsBroadcasting(!isRealGpsBroadcasting)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold tracking-wider uppercase transition shadow-sm ${
+                    isRealGpsBroadcasting
+                      ? 'bg-emerald-600 text-white animate-pulse'
+                      : 'bg-[#f0f0f2] hover:bg-black hover:text-white text-black border border-[#e4e4e7]'
+                  }`}
+                >
+                  <Radio className="w-3.5 h-3.5" />
+                  {isRealGpsBroadcasting ? 'BROADCASTING REAL GPS' : 'USE REAL DEVICE GPS'}
+                </button>
+
+                {/* Simulate GPS Button */}
+                <button
+                  onClick={() => setIsSimulatingGps(!isSimulatingGps)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold tracking-wider uppercase transition shadow-sm ${
+                    isSimulatingGps
+                      ? 'bg-red-600 text-white animate-pulse'
+                      : 'bg-black hover:bg-[#27272a] text-white'
+                  }`}
+                >
+                  <Navigation className="w-3.5 h-3.5" />
+                  {isSimulatingGps ? 'STOP SIMULATION' : 'SIMULATE ROUTE'}
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-black">

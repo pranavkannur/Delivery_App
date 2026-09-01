@@ -2,11 +2,19 @@ import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import { socket } from '../services/socket';
 import type { Order } from '../types';
-import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { Package, Search, KeyRound, RefreshCw, ArrowRight, Clock } from 'lucide-react';
+import { 
+  Package, 
+  Search, 
+  KeyRound, 
+  RefreshCw, 
+  ArrowRight, 
+  Clock, 
+  Navigation,
+  MapPin
+} from 'lucide-react';
 
-// Custom Marker Icons
 const pickupIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-black.png',
   iconSize: [25, 41],
@@ -25,20 +33,30 @@ const driverIcon = new L.Icon({
   iconAnchor: [12, 41],
 });
 
+// Helper component to smoothly re-center Leaflet map when coordinates update
+const MapRecenter: React.FC<{ center: [number, number] }> = ({ center }) => {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, 13);
+  }, [center, map]);
+  return null;
+};
+
 export const CustomerDashboard: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [driverLocation, setDriverLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [detectingGps, setDetectingGps] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Order Form State (prefilled for quick testing)
+  // Order Form State (Real GPS Coordinates)
   const [pickupAddress, setPickupAddress] = useState('123 Artisan Bakery & Cafe');
   const [deliveryAddress, setDeliveryAddress] = useState('456 Skyline Tower, Apt 12');
-  const [pickupLat] = useState(37.7749);
-  const [pickupLng] = useState(-122.4194);
-  const [deliveryLat] = useState(37.7889);
-  const [deliveryLng] = useState(-122.4014);
+  const [pickupLat, setPickupLat] = useState(37.7749);
+  const [pickupLng, setPickupLng] = useState(-122.4194);
+  const [deliveryLat, setDeliveryLat] = useState(37.7889);
+  const [deliveryLng, setDeliveryLng] = useState(-122.4014);
   const [totalAmount, setTotalAmount] = useState('32.00');
 
   const fetchOrders = async () => {
@@ -88,6 +106,46 @@ export const CustomerDashboard: React.FC = () => {
     };
   }, [selectedOrder?.id]);
 
+  // 📍 1-Click Detect Real Device Location
+  const handleUseMyLocation = () => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser');
+      return;
+    }
+    setDetectingGps(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+
+        setDeliveryLat(lat);
+        setDeliveryLng(lng);
+        setPickupLat(lat - 0.008); // Nearby pickup location offset
+        setPickupLng(lng - 0.008);
+
+        // Reverse Geocode coordinates to street address
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+          const data = await res.json();
+          if (data && data.display_name) {
+            const shortAddress = data.display_name.split(',').slice(0, 3).join(',');
+            setDeliveryAddress(shortAddress);
+            setPickupAddress('Local Store & Bakery, ' + data.display_name.split(',')[0]);
+          }
+        } catch {
+          setDeliveryAddress(`GPS Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
+        } finally {
+          setDetectingGps(false);
+        }
+      },
+      (error) => {
+        setDetectingGps(false);
+        alert('Could not retrieve location: ' + error.message);
+      },
+      { enableHighAccuracy: true }
+    );
+  };
+
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -107,7 +165,7 @@ export const CustomerDashboard: React.FC = () => {
 
       await fetchOrders();
       setSelectedOrder(res.data.order);
-      alert('🎉 Order Placed Successfully!');
+      alert('🎉 Order Placed Successfully in your city!');
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to place order');
     }
@@ -130,7 +188,7 @@ export const CustomerDashboard: React.FC = () => {
       />
 
       <div className="relative max-w-7xl mx-auto space-y-6">
-        {/* Header with Search Component */}
+        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-black text-black uppercase font-['Hanken_Grotesk',sans-serif]">
@@ -141,7 +199,6 @@ export const CustomerDashboard: React.FC = () => {
             </p>
           </div>
 
-          {/* Search Bar matching Design System */}
           <div className="flex items-center gap-3">
             <div className="relative w-64">
               <Search className="w-4 h-4 text-[#71717a] absolute left-3 top-3" />
@@ -169,10 +226,23 @@ export const CustomerDashboard: React.FC = () => {
           <div className="lg:col-span-5 space-y-6">
             {/* Create Order Card */}
             <div className="bg-[#f8f8f9] border border-[#e4e4e7] rounded-2xl p-6 shadow-md">
-              <h2 className="text-sm font-black text-black uppercase tracking-wider font-['JetBrains_Mono',monospace] mb-4 flex items-center gap-2">
-                <Package className="w-4 h-4 text-black" />
-                Place New Delivery Order
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-black text-black uppercase tracking-wider font-['JetBrains_Mono',monospace] flex items-center gap-2">
+                  <Package className="w-4 h-4 text-black" />
+                  Place Delivery Order
+                </h2>
+
+                {/* 📍 Use Real Device GPS Button */}
+                <button
+                  type="button"
+                  onClick={handleUseMyLocation}
+                  disabled={detectingGps}
+                  className="bg-black hover:bg-[#27272a] text-white text-[10px] font-bold font-['JetBrains_Mono',monospace] px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition shadow-sm"
+                >
+                  <Navigation className={`w-3 h-3 ${detectingGps ? 'animate-spin' : ''}`} />
+                  <span>{detectingGps ? 'LOCATING...' : 'MY LOCATION'}</span>
+                </button>
+              </div>
 
               <form onSubmit={handleCreateOrder} className="space-y-3">
                 <div>
@@ -199,6 +269,11 @@ export const CustomerDashboard: React.FC = () => {
                     onChange={(e) => setDeliveryAddress(e.target.value)}
                     className="w-full bg-[#f0f0f2] border border-[#e4e4e7] rounded-xl px-3.5 py-2 text-black text-xs font-['JetBrains_Mono',monospace] focus:outline-none focus:border-black transition"
                   />
+                </div>
+
+                <div className="flex items-center gap-2 text-[10px] text-[#71717a] font-['JetBrains_Mono',monospace]">
+                  <MapPin className="w-3 h-3 text-black" />
+                  <span>GPS: {deliveryLat.toFixed(4)}, {deliveryLng.toFixed(4)}</span>
                 </div>
 
                 <div>
@@ -289,7 +364,6 @@ export const CustomerDashboard: React.FC = () => {
           <div className="lg:col-span-7 space-y-6">
             {selectedOrder ? (
               <div className="bg-[#f8f8f9] border border-[#e4e4e7] rounded-2xl p-6 shadow-md space-y-4 font-['JetBrains_Mono',monospace]">
-                {/* Active Tracking Status & Handover PIN */}
                 <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-[#f0f0f2] rounded-xl border border-[#e4e4e7]">
                   <div>
                     <span className="text-[10px] text-[#71717a] uppercase font-bold tracking-widest block">
@@ -303,7 +377,6 @@ export const CustomerDashboard: React.FC = () => {
                     </p>
                   </div>
 
-                  {/* Prominent Handover OTP PIN */}
                   {selectedOrder.deliveryOtp && (
                     <div className="bg-black text-white px-4 py-2 rounded-xl text-center shadow-sm">
                       <div className="flex items-center gap-1.5 text-[10px] text-[#a1a1aa] font-bold tracking-wider uppercase mb-0.5">
@@ -317,7 +390,7 @@ export const CustomerDashboard: React.FC = () => {
                   )}
                 </div>
 
-                {/* Leaflet Live Map */}
+                {/* Leaflet Live Map with Auto-Recenter */}
                 <div className="h-[420px] w-full rounded-xl overflow-hidden border border-[#e4e4e7] relative shadow-inner">
                   <MapContainer
                     center={[selectedOrder.pickupLat, selectedOrder.pickupLng]}
@@ -325,6 +398,8 @@ export const CustomerDashboard: React.FC = () => {
                     scrollWheelZoom={false}
                     className="w-full h-full"
                   >
+                    <MapRecenter center={[selectedOrder.pickupLat, selectedOrder.pickupLng]} />
+
                     <TileLayer
                       attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                       url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
