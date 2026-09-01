@@ -8,14 +8,9 @@ import {
   DollarSign, 
   Package, 
   Truck, 
-  Users, 
   RefreshCw, 
   Search, 
-  CheckCircle2, 
-  Clock, 
-  AlertCircle,
-  Activity,
-  ArrowUpRight
+  Activity 
 } from 'lucide-react';
 
 const pickupIcon = new L.Icon({
@@ -30,21 +25,13 @@ const deliveryIcon = new L.Icon({
   iconAnchor: [11, 36],
 });
 
-const driverIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
-  iconSize: [22, 36],
-  iconAnchor: [11, 36],
-});
-
 interface AdminDashboardProps {
-  user: User;
+  user?: User;
 }
 
-export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
+export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
   const [stats, setStats] = useState<any>(null);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [drivers, setDrivers] = useState<any[]>([]);
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -52,14 +39,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
   const fetchAdminData = async () => {
     try {
       setLoading(true);
-      const [statsRes, ordersRes, driversRes] = await Promise.all([
+      const [statsRes, ordersRes] = await Promise.all([
         api.get('/admin/stats'),
         api.get('/admin/orders'),
-        api.get('/admin/drivers'),
       ]);
       setStats(statsRes.data.stats);
       setOrders(ordersRes.data.orders);
-      setDrivers(driversRes.data.drivers);
     } catch (err) {
       console.error('Error fetching admin data:', err);
     } finally {
