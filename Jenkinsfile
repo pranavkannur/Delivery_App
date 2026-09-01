@@ -34,6 +34,7 @@ NODE_ENV=production
 EOF
                 '''
                 echo '🚀 Deploying Production Containers with Docker Compose...'
+                sh 'docker rm -f $(docker ps -aq --filter "publish=5000" --filter "publish=80") || true'
                 sh 'docker compose down || true'
                 sh 'docker compose up -d --remove-orphans --force-recreate'
             }
