@@ -10,21 +10,21 @@ pipeline {
     stages {
         stage('Checkout Code') {
             steps {
-                echo '📦 Cloning repository from GitHub...'
+                echo ' Cloning repository from GitHub...'
                 checkout scm
             }
         }
 
         stage('Build Docker Containers') {
             steps {
-                echo '🐳 Building Multi-Container Docker Stack...'
+                echo ' Building Multi-Container Docker Stack with HTTPS...'
                 sh 'docker compose build'
             }
         }
 
         stage('Setup Environment & Deploy') {
             steps {
-                echo '🔐 Injecting secure production credentials...'
+                echo ' Injecting secure production credentials...'
                 sh '''
                     cat <<EOF > Backend/.env
 PORT=5000
@@ -33,8 +33,8 @@ JWT_SECRET=${JWT_SECRET}
 NODE_ENV=production
 EOF
                 '''
-                echo '🚀 Deploying Production Containers with Docker Compose...'
-                sh 'docker rm -f $(docker ps -aq --filter "publish=5000" --filter "publish=80") || true'
+                echo ' Deploying Production Containers with Docker Compose...'
+                sh 'docker rm -f $(docker ps -aq --filter "publish=5000" --filter "publish=80" --filter "publish=443") || true'
                 sh 'docker compose down || true'
                 sh 'docker compose up -d --remove-orphans --force-recreate'
             }
@@ -43,10 +43,10 @@ EOF
 
     post {
         success {
-            echo '🎉 Jenkins CI/CD Pipeline Succeeded! Delivery App is LIVE.'
+            echo 'Jenkins CI/CD Pipeline Succeeded! Delivery App is LIVE on HTTPS.'
         }
         failure {
-            echo '❌ Pipeline Failed! Check console output for logs.'
+            echo ' Pipeline Failed! Check console output for logs.'
         }
     }
 }

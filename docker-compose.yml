@@ -19,5 +19,8 @@ services:
     restart: always
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - /etc/letsencrypt/live/13.214.160.70.sslip.io:/etc/nginx/ssl:ro
     depends_on:
       - backend
