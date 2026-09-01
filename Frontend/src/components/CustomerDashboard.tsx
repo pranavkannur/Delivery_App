@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../services/api';
 import { socket } from '../services/socket';
 import type { Order } from '../types';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { 
   Package, 
@@ -12,7 +12,8 @@ import {
   ArrowRight, 
   Clock, 
   Navigation,
-  MapPin
+  MapPin,
+  Crosshair
 } from 'lucide-react';
 
 const pickupIcon = new L.Icon({
@@ -33,12 +34,22 @@ const driverIcon = new L.Icon({
   iconAnchor: [12, 41],
 });
 
-// Helper component to smoothly re-center Leaflet map when coordinates update
+// Helper: Smoothly fly/recenter map
 const MapRecenter: React.FC<{ center: [number, number] }> = ({ center }) => {
   const map = useMap();
   useEffect(() => {
-    map.setView(center, 13);
+    map.flyTo(center, 14, { duration: 1.2 });
   }, [center, map]);
+  return null;
+};
+
+// Helper: Click on map to place precision pin
+const MapClickHandler: React.FC<{ onLocationSelect: (lat: number, lng: number) => void }> = ({ onLocationSelect }) => {
+  useMapEvents({
+    click(e) {
+      onLocationSelect(e.latlng.lat, e.latlng.lng);
+    },
+  });
   return null;
 };
 
@@ -46,19 +57,27 @@ export const CustomerDashboard: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [driverLocation, setDriverLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
   const [loading, setLoading] = useState(false);
   const [detectingGps, setDetectingGps] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Order Form State (Real GPS Coordinates)
+  // Address Search Autocomplete State
+  const [addressInput, setAddressInput] = useState('456 Skyline Tower, Apt 12');
   const [pickupAddress, setPickupAddress] = useState('123 Artisan Bakery & Cafe');
-  const [deliveryAddress, setDeliveryAddress] = useState('456 Skyline Tower, Apt 12');
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [isSearchingAddress, setIsSearchingAddress] = useState(false);
+
+  // Precision Coordinates
   const [pickupLat, setPickupLat] = useState(37.7749);
   const [pickupLng, setPickupLng] = useState(-122.4194);
   const [deliveryLat, setDeliveryLat] = useState(37.7889);
   const [deliveryLng, setDeliveryLng] = useState(-122.4014);
   const [totalAmount, setTotalAmount] = useState('32.00');
 
+  const deliveryMarkerRef = useRef<any>(null);
+
+  // Fetch Orders
   const fetchOrders = async () => {
     try {
       setLoading(true);
@@ -77,6 +96,35 @@ export const CustomerDashboard: React.FC = () => {
   useEffect(() => {
     fetchOrders();
   }, []);
+
+  // Fetch Turn-by-Turn Road Route from OSRM
+  const fetchRoadRoute = async (startLat: number, startLng: number, endLat: number, endLng: number) => {
+    try {
+      const res = await fetch(
+        `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson`
+      );
+      const data = await res.json();
+      if (data.routes && data.routes.length > 0) {
+        // Convert [lng, lat] to Leaflet's [lat, lng] format
+        const coords: [number, number][] = data.routes[0].geometry.coordinates.map(
+          (c: [number, number]) => [c[1], c[0]]
+        );
+        setRouteCoordinates(coords);
+      }
+    } catch (err) {
+      console.error('Error fetching road route:', err);
+      // Fallback to direct line if route service has network timeout
+      setRouteCoordinates([[startLat, startLng], [endLat, endLng]]);
+    }
+  };
+
+  // Re-fetch road route whenever selected order or driver position changes
+  useEffect(() => {
+    if (!selectedOrder) return;
+    const startLat = driverLocation ? driverLocation.lat : selectedOrder.pickupLat;
+    const startLng = driverLocation ? driverLocation.lng : selectedOrder.pickupLng;
+    fetchRoadRoute(startLat, startLng, selectedOrder.deliveryLat, selectedOrder.deliveryLng);
+  }, [selectedOrder, driverLocation]);
 
   // WebSocket Live Updates
   useEffect(() => {
@@ -106,65 +154,92 @@ export const CustomerDashboard: React.FC = () => {
     };
   }, [selectedOrder?.id]);
 
-  // 📍 1-Click Detect Real Device Location
-    // 📍 1-Click Smart City / Location Detection
-  const handleUseMyLocation = async () => {
-    setDetectingGps(true);
-
-    const applyCoordinates = async (lat: number, lng: number, fallbackCity?: string) => {
-      setDeliveryLat(lat);
-      setDeliveryLng(lng);
-      setPickupLat(lat - 0.008);
-      setPickupLng(lng - 0.008);
-
-      try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
-        const data = await res.json();
-        if (data && data.display_name) {
-          const shortAddress = data.display_name.split(',').slice(0, 3).join(',');
-          setDeliveryAddress(shortAddress);
-          setPickupAddress('Local Store & Bakery, ' + data.display_name.split(',')[0]);
-        } else if (fallbackCity) {
-          setDeliveryAddress(`Downtown Delivery, ${fallbackCity}`);
-          setPickupAddress(`Local Bakery, ${fallbackCity}`);
-        }
-      } catch {
-        setDeliveryAddress(fallbackCity ? `Main Street, ${fallbackCity}` : `GPS (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
-      } finally {
-        setDetectingGps(false);
+  // Reverse Geocode helper
+  const reverseGeocode = async (lat: number, lng: number) => {
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+      const data = await res.json();
+      if (data && data.display_name) {
+        const short = data.display_name.split(',').slice(0, 3).join(',');
+        setAddressInput(short);
+        setPickupAddress('Store near ' + data.display_name.split(',')[0]);
       }
-    };
+    } catch {
+      setAddressInput(`Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
+    }
+  };
 
-    // 1. Try HTML5 Browser GPS if available (HTTPS or localhost)
-    if (navigator.geolocation && window.isSecureContext) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          applyCoordinates(position.coords.latitude, position.coords.longitude);
-        },
-        async () => {
-          // Fallback to IP Geolocation if permission denied
-          await fetchIpLocation();
-        },
-        { enableHighAccuracy: true, timeout: 5000 }
-      );
-    } else {
-      // 2. Fallback to free IP-based city geolocation on HTTP
-      await fetchIpLocation();
+  // Handle User Clicking or Dragging Pin on Map
+  const handleMapLocationSelect = (lat: number, lng: number) => {
+    setDeliveryLat(lat);
+    setDeliveryLng(lng);
+    setPickupLat(lat - 0.008);
+    setPickupLng(lng - 0.008);
+    reverseGeocode(lat, lng);
+  };
+
+  // Live Address Autocomplete Search (Debounced)
+  const handleAddressSearch = async (text: string) => {
+    setAddressInput(text);
+    if (text.trim().length < 3) {
+      setSuggestions([]);
+      return;
     }
 
-    async function fetchIpLocation() {
+    setIsSearchingAddress(true);
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(text)}&limit=5`
+      );
+      const data = await res.json();
+      setSuggestions(data || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSearchingAddress(false);
+    }
+  };
+
+  const selectSuggestion = (s: any) => {
+    const lat = parseFloat(s.lat);
+    const lng = parseFloat(s.lon);
+    setAddressInput(s.display_name.split(',').slice(0, 3).join(','));
+    setDeliveryLat(lat);
+    setDeliveryLng(lng);
+    setPickupLat(lat - 0.008);
+    setPickupLng(lng - 0.008);
+    setSuggestions([]);
+  };
+
+  // Detect Current Location
+  const handleUseMyLocation = () => {
+    setDetectingGps(true);
+    if (navigator.geolocation && window.isSecureContext) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          handleMapLocationSelect(pos.coords.latitude, pos.coords.longitude);
+          setDetectingGps(false);
+        },
+        async () => {
+          await fetchIpFallback();
+        },
+        { enableHighAccuracy: true, timeout: 6000 }
+      );
+    } else {
+      fetchIpFallback();
+    }
+
+    async function fetchIpFallback() {
       try {
         const res = await fetch('https://ipapi.co/json/');
         const data = await res.json();
         if (data && data.latitude && data.longitude) {
-          applyCoordinates(data.latitude, data.longitude, `${data.city}, ${data.region}`);
-        } else {
-          setDetectingGps(false);
-          alert('Could not determine city location');
+          handleMapLocationSelect(data.latitude, data.longitude);
         }
       } catch {
+        alert('Could not determine location');
+      } finally {
         setDetectingGps(false);
-        alert('Could not determine city location');
       }
     }
   };
@@ -174,7 +249,7 @@ export const CustomerDashboard: React.FC = () => {
     try {
       const res = await api.post('/orders', {
         pickupAddress,
-        deliveryAddress,
+        deliveryAddress: addressInput,
         pickupLat,
         pickupLng,
         deliveryLat,
@@ -188,7 +263,7 @@ export const CustomerDashboard: React.FC = () => {
 
       await fetchOrders();
       setSelectedOrder(res.data.order);
-      alert('🎉 Order Placed Successfully in your city!');
+      alert('🎉 Order Placed Successfully!');
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to place order');
     }
@@ -218,7 +293,7 @@ export const CustomerDashboard: React.FC = () => {
               Customer Hub
             </h1>
             <p className="text-xs text-[#5D5F5F] font-['JetBrains_Mono',monospace]">
-              CREATE ORDERS & TRACK LIVE DELIVERIES
+              PRECISION PINPOINT DELIVERY & LIVE ROAD ROUTING
             </p>
           </div>
 
@@ -255,7 +330,6 @@ export const CustomerDashboard: React.FC = () => {
                   Place Delivery Order
                 </h2>
 
-                {/* 📍 Use Real Device GPS Button */}
                 <button
                   type="button"
                   onClick={handleUseMyLocation}
@@ -268,9 +342,46 @@ export const CustomerDashboard: React.FC = () => {
               </div>
 
               <form onSubmit={handleCreateOrder} className="space-y-3">
+                {/* Delivery Address with Live Autocomplete */}
+                <div className="relative">
+                  <label className="block text-[11px] font-semibold text-[#71717a] font-['JetBrains_Mono',monospace] tracking-wider uppercase mb-1">
+                    Delivery Address (Type or Click Map)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      placeholder="Search building, street, or city..."
+                      value={addressInput}
+                      onChange={(e) => handleAddressSearch(e.target.value)}
+                      className="w-full bg-[#f0f0f2] border border-[#e4e4e7] rounded-xl px-3.5 py-2 text-black text-xs font-['JetBrains_Mono',monospace] focus:outline-none focus:border-black transition"
+                    />
+                    {isSearchingAddress && (
+                      <div className="absolute right-3 top-2.5 w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                    )}
+                  </div>
+
+                  {/* Autocomplete Suggestions Dropdown */}
+                  {suggestions.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-[#f8f8f9] border border-[#e4e4e7] rounded-xl shadow-2xl z-[2000] overflow-hidden divide-y divide-[#e4e4e7]">
+                      {suggestions.map((s, idx) => (
+                        <div
+                          key={idx}
+                          onClick={() => selectSuggestion(s)}
+                          className="p-2.5 text-xs text-black hover:bg-black hover:text-white cursor-pointer transition font-['JetBrains_Mono',monospace] flex items-start gap-2"
+                        >
+                          <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                          <span className="truncate">{s.display_name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Pickup Location */}
                 <div>
                   <label className="block text-[11px] font-semibold text-[#71717a] font-['JetBrains_Mono',monospace] tracking-wider uppercase mb-1">
-                    Pickup Location
+                    Pickup Store Location
                   </label>
                   <input
                     type="text"
@@ -281,22 +392,13 @@ export const CustomerDashboard: React.FC = () => {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-semibold text-[#71717a] font-['JetBrains_Mono',monospace] tracking-wider uppercase mb-1">
-                    Delivery Address
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={deliveryAddress}
-                    onChange={(e) => setDeliveryAddress(e.target.value)}
-                    className="w-full bg-[#f0f0f2] border border-[#e4e4e7] rounded-xl px-3.5 py-2 text-black text-xs font-['JetBrains_Mono',monospace] focus:outline-none focus:border-black transition"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2 text-[10px] text-[#71717a] font-['JetBrains_Mono',monospace]">
-                  <MapPin className="w-3 h-3 text-black" />
-                  <span>GPS: {deliveryLat.toFixed(4)}, {deliveryLng.toFixed(4)}</span>
+                {/* Coordinates & Pin-Drop Info */}
+                <div className="flex items-center justify-between text-[10px] text-[#71717a] font-['JetBrains_Mono',monospace] bg-[#f0f0f2] p-2.5 rounded-xl border border-[#e4e4e7]">
+                  <div className="flex items-center gap-1.5">
+                    <Crosshair className="w-3 h-3 text-black" />
+                    <span>GPS: {deliveryLat.toFixed(4)}, {deliveryLng.toFixed(4)}</span>
+                  </div>
+                  <span className="text-black font-semibold">📍 Click map to adjust pin</span>
                 </div>
 
                 <div>
@@ -317,7 +419,7 @@ export const CustomerDashboard: React.FC = () => {
                   type="submit"
                   className="w-full mt-2 bg-black hover:bg-[#27272a] text-white text-xs font-bold font-['JetBrains_Mono',monospace] tracking-widest uppercase py-3 rounded-xl transition duration-150 flex items-center justify-center gap-2 shadow-sm"
                 >
-                  <span>CREATE ORDER</span>
+                  <span>PLACE ORDER</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </form>
@@ -383,14 +485,14 @@ export const CustomerDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* Right Column: Live Map & Selected Order Card (7 cols) */}
+          {/* Right Column: Live Map & Precision Pin Placement (7 cols) */}
           <div className="lg:col-span-7 space-y-6">
-            {selectedOrder ? (
-              <div className="bg-[#f8f8f9] border border-[#e4e4e7] rounded-2xl p-6 shadow-md space-y-4 font-['JetBrains_Mono',monospace]">
+            <div className="bg-[#f8f8f9] border border-[#e4e4e7] rounded-2xl p-6 shadow-md space-y-4 font-['JetBrains_Mono',monospace]">
+              {selectedOrder ? (
                 <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-[#f0f0f2] rounded-xl border border-[#e4e4e7]">
                   <div>
                     <span className="text-[10px] text-[#71717a] uppercase font-bold tracking-widest block">
-                      LIVE TRACKING
+                      LIVE ROAD TRACKING
                     </span>
                     <h3 className="text-base font-black text-black mt-0.5">
                       ORDER #{selectedOrder.id.slice(0, 8).toUpperCase()}
@@ -412,67 +514,96 @@ export const CustomerDashboard: React.FC = () => {
                     </div>
                   )}
                 </div>
-
-                {/* Leaflet Live Map with Auto-Recenter */}
-                <div className="h-[420px] w-full rounded-xl overflow-hidden border border-[#e4e4e7] relative shadow-inner">
-                  <MapContainer
-                    center={[selectedOrder.pickupLat, selectedOrder.pickupLng]}
-                    zoom={13}
-                    scrollWheelZoom={false}
-                    className="w-full h-full"
-                  >
-                    <MapRecenter center={[selectedOrder.pickupLat, selectedOrder.pickupLng]} />
-
-                    <TileLayer
-                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    />
-
-                    {/* Pickup Marker */}
-                    <Marker position={[selectedOrder.pickupLat, selectedOrder.pickupLng]} icon={pickupIcon}>
-                      <Popup>Pickup: {selectedOrder.pickupAddress}</Popup>
-                    </Marker>
-
-                    {/* Delivery Marker */}
-                    <Marker position={[selectedOrder.deliveryLat, selectedOrder.deliveryLng]} icon={deliveryIcon}>
-                      <Popup>Delivery: {selectedOrder.deliveryAddress}</Popup>
-                    </Marker>
-
-                    {/* Live Driver Marker */}
-                    {driverLocation && (
-                      <Marker position={[driverLocation.lat, driverLocation.lng]} icon={driverIcon}>
-                        <Popup>🛵 Driver Live GPS</Popup>
-                      </Marker>
-                    )}
-
-                    {/* Route Line */}
-                    <Polyline
-                      positions={[
-                        [selectedOrder.pickupLat, selectedOrder.pickupLng],
-                        driverLocation
-                          ? [driverLocation.lat, driverLocation.lng]
-                          : [selectedOrder.deliveryLat, selectedOrder.deliveryLng],
-                        [selectedOrder.deliveryLat, selectedOrder.deliveryLng],
-                      ]}
-                      color="#000000"
-                      dashArray="6, 8"
-                    />
-                  </MapContainer>
-
-                  {driverLocation && (
-                    <div className="absolute top-3 right-3 z-[1000] bg-black text-white px-3 py-1.5 rounded-lg flex items-center gap-2 text-[11px] font-bold shadow-md">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                      DRIVER CONNECTED
-                    </div>
-                  )}
+              ) : (
+                <div className="p-3 bg-[#f0f0f2] rounded-xl text-xs text-[#5D5F5F] flex items-center justify-between">
+                  <span>🎯 Click anywhere on the map or drag the pin to set your exact doorstep</span>
+                  <span className="text-black font-bold">PRECISION MAP</span>
                 </div>
+              )}
+
+              {/* Leaflet Precision Map */}
+              <div className="h-[440px] w-full rounded-xl overflow-hidden border border-[#e4e4e7] relative shadow-inner">
+                <MapContainer
+                  center={[
+                    selectedOrder ? selectedOrder.deliveryLat : deliveryLat,
+                    selectedOrder ? selectedOrder.deliveryLng : deliveryLng
+                  ]}
+                  zoom={13}
+                  scrollWheelZoom={false}
+                  className="w-full h-full cursor-crosshair"
+                >
+                  <MapRecenter center={[
+                    selectedOrder ? selectedOrder.deliveryLat : deliveryLat,
+                    selectedOrder ? selectedOrder.deliveryLng : deliveryLng
+                  ]} />
+
+                  {/* Click on Map Event Handler */}
+                  {!selectedOrder && <MapClickHandler onLocationSelect={handleMapLocationSelect} />}
+
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+
+                  {/* Pickup Marker */}
+                  <Marker 
+                    position={[
+                      selectedOrder ? selectedOrder.pickupLat : pickupLat,
+                      selectedOrder ? selectedOrder.pickupLng : pickupLng
+                    ]} 
+                    icon={pickupIcon}
+                  >
+                    <Popup>🟢 Pickup Location</Popup>
+                  </Marker>
+
+                  {/* Delivery Marker (Draggable when setting location!) */}
+                  <Marker 
+                    position={[
+                      selectedOrder ? selectedOrder.deliveryLat : deliveryLat,
+                      selectedOrder ? selectedOrder.deliveryLng : deliveryLng
+                    ]} 
+                    icon={deliveryIcon}
+                    draggable={!selectedOrder}
+                    ref={deliveryMarkerRef}
+                    eventHandlers={{
+                      dragend() {
+                        const marker = deliveryMarkerRef.current;
+                        if (marker) {
+                          const latLng = marker.getLatLng();
+                          handleMapLocationSelect(latLng.lat, latLng.lng);
+                        }
+                      },
+                    }}
+                  >
+                    <Popup>🔴 Delivery Destination</Popup>
+                  </Marker>
+
+                  {/* Live Moving Driver Marker */}
+                  {driverLocation && (
+                    <Marker position={[driverLocation.lat, driverLocation.lng]} icon={driverIcon}>
+                      <Popup>🛵 Driver Live Position</Popup>
+                    </Marker>
+                  )}
+
+                  {/* Real Road Curve Polyline (from OSRM) */}
+                  {routeCoordinates.length > 0 && (
+                    <Polyline
+                      positions={routeCoordinates}
+                      color="#000000"
+                      weight={4}
+                      opacity={0.8}
+                    />
+                  )}
+                </MapContainer>
+
+                {driverLocation && (
+                  <div className="absolute top-3 right-3 z-[1000] bg-black text-white px-3 py-1.5 rounded-lg flex items-center gap-2 text-[11px] font-bold shadow-md">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                    LIVE DRIVER GPS CONNECTED
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="bg-[#f8f8f9] border border-[#e4e4e7] rounded-2xl p-16 text-center text-[#a1a1aa] font-['JetBrains_Mono',monospace]">
-                <Package className="w-12 h-12 mx-auto mb-3 text-[#d4d4d8]" />
-                <p className="text-xs tracking-wider uppercase">SELECT AN ORDER TO VIEW LIVE TRACKING</p>
-              </div>
-            )}
+            </div>
           </div>
         </div>
       </div>
