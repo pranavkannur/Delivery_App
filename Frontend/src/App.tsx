@@ -4,6 +4,7 @@ import { Navbar } from './components/Navbar';
 import { CustomerDashboard } from './components/CustomerDashboard';
 import { DriverDashboard } from './components/DriverDashboard';
 import { PartnerDashboard } from './components/PartnerDashboard';
+import { AdminDashboard } from './components/AdminDashboard';
 import type { User } from './types';
 
 export const App: React.FC = () => {
@@ -40,6 +41,7 @@ export const App: React.FC = () => {
     <div className="min-h-screen bg-[#ececee] flex flex-col font-['Inter',sans-serif]">
       <Navbar user={user} onLogout={handleLogout} />
       <main className="flex-1">
+        {user.role === 'ADMIN' && <AdminDashboard user={user} />}
         {user.role === 'DRIVER' && <DriverDashboard user={user} />}
         {user.role === 'PARTNER' && <PartnerDashboard user={user} />}
         {user.role === 'CUSTOMER' && <CustomerDashboard />}
