@@ -107,43 +107,66 @@ export const CustomerDashboard: React.FC = () => {
   }, [selectedOrder?.id]);
 
   // 📍 1-Click Detect Real Device Location
-  const handleUseMyLocation = () => {
-    if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser');
-      return;
-    }
+    // 📍 1-Click Smart City / Location Detection
+  const handleUseMyLocation = async () => {
     setDetectingGps(true);
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
 
-        setDeliveryLat(lat);
-        setDeliveryLng(lng);
-        setPickupLat(lat - 0.008); // Nearby pickup location offset
-        setPickupLng(lng - 0.008);
+    const applyCoordinates = async (lat: number, lng: number, fallbackCity?: string) => {
+      setDeliveryLat(lat);
+      setDeliveryLng(lng);
+      setPickupLat(lat - 0.008);
+      setPickupLng(lng - 0.008);
 
-        // Reverse Geocode coordinates to street address
-        try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
-          const data = await res.json();
-          if (data && data.display_name) {
-            const shortAddress = data.display_name.split(',').slice(0, 3).join(',');
-            setDeliveryAddress(shortAddress);
-            setPickupAddress('Local Store & Bakery, ' + data.display_name.split(',')[0]);
-          }
-        } catch {
-          setDeliveryAddress(`GPS Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
-        } finally {
-          setDetectingGps(false);
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+        const data = await res.json();
+        if (data && data.display_name) {
+          const shortAddress = data.display_name.split(',').slice(0, 3).join(',');
+          setDeliveryAddress(shortAddress);
+          setPickupAddress('Local Store & Bakery, ' + data.display_name.split(',')[0]);
+        } else if (fallbackCity) {
+          setDeliveryAddress(`Downtown Delivery, ${fallbackCity}`);
+          setPickupAddress(`Local Bakery, ${fallbackCity}`);
         }
-      },
-      (error) => {
+      } catch {
+        setDeliveryAddress(fallbackCity ? `Main Street, ${fallbackCity}` : `GPS (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
+      } finally {
         setDetectingGps(false);
-        alert('Could not retrieve location: ' + error.message);
-      },
-      { enableHighAccuracy: true }
-    );
+      }
+    };
+
+    // 1. Try HTML5 Browser GPS if available (HTTPS or localhost)
+    if (navigator.geolocation && window.isSecureContext) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          applyCoordinates(position.coords.latitude, position.coords.longitude);
+        },
+        async () => {
+          // Fallback to IP Geolocation if permission denied
+          await fetchIpLocation();
+        },
+        { enableHighAccuracy: true, timeout: 5000 }
+      );
+    } else {
+      // 2. Fallback to free IP-based city geolocation on HTTP
+      await fetchIpLocation();
+    }
+
+    async function fetchIpLocation() {
+      try {
+        const res = await fetch('https://ipapi.co/json/');
+        const data = await res.json();
+        if (data && data.latitude && data.longitude) {
+          applyCoordinates(data.latitude, data.longitude, `${data.city}, ${data.region}`);
+        } else {
+          setDetectingGps(false);
+          alert('Could not determine city location');
+        }
+      } catch {
+        setDetectingGps(false);
+        alert('Could not determine city location');
+      }
+    }
   };
 
   const handleCreateOrder = async (e: React.FormEvent) => {
