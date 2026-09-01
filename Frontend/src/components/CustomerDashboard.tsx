@@ -13,7 +13,6 @@ import {
   Clock, 
   Navigation,
   MapPin,
-  Crosshair,
   Plus
 } from 'lucide-react';
 
@@ -416,16 +415,6 @@ export const CustomerDashboard: React.FC = () => {
                     className="w-full bg-[#f0f0f2] border border-[#e4e4e7] rounded-xl px-3.5 py-2 text-black text-xs font-['JetBrains_Mono',monospace] focus:outline-none focus:border-black transition"
                   />
                 </div>
-
-                {/* Coordinates & Pin-Drop Info Banner */}
-                <div className="flex items-center justify-between text-[10px] text-[#71717a] font-['JetBrains_Mono',monospace] bg-[#f0f0f2] p-2.5 rounded-xl border border-[#e4e4e7]">
-                  <div className="flex items-center gap-1.5">
-                    <Crosshair className="w-3.5 h-3.5 text-black" />
-                    <span>GPS: {deliveryLat.toFixed(5)}, {deliveryLng.toFixed(5)}</span>
-                  </div>
-                  <span className="text-emerald-700 font-bold">🎯 CLICK MAP TO DROP PIN</span>
-                </div>
-
                 <div>
                   <label className="block text-[11px] font-semibold text-[#71717a] font-['JetBrains_Mono',monospace] tracking-wider uppercase mb-1">
                     Total Amount ($)
@@ -540,15 +529,7 @@ export const CustomerDashboard: React.FC = () => {
                     </div>
                   )}
                 </div>
-              ) : (
-                <div className="p-3 bg-[#f0f0f2] rounded-xl text-xs text-black flex items-center justify-between border border-[#e4e4e7]">
-                  <span className="font-bold flex items-center gap-1.5">
-                    <Crosshair className="w-4 h-4 text-emerald-600" />
-                    CLICK ANYWHERE ON MAP OR DRAG RED PIN TO YOUR DOORSTEP
-                  </span>
-                  <span className="text-[10px] bg-black text-white px-2 py-0.5 rounded font-bold">100% PRECISION</span>
-                </div>
-              )}
+              ) : (null)}
 
               {/* Leaflet Precision Map */}
               <div className="h-[460px] w-full rounded-xl overflow-hidden border border-[#e4e4e7] relative shadow-inner">
