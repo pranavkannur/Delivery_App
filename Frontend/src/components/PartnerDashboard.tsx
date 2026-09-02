@@ -10,7 +10,6 @@ import {
   ArrowRight, 
   Navigation, 
   MapPin, 
-  Search 
 } from 'lucide-react';
 
 const storeIcon = new L.Icon({
