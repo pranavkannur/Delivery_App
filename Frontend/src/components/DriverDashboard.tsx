@@ -2,7 +2,47 @@ import React, { useState, useEffect } from 'react';
 import api from '../services/api';
 import { socket } from '../services/socket';
 import type { Order, User } from '../types';
-import { Truck, CheckCircle2, Navigation, RefreshCw, KeyRound, AlertCircle, ArrowRight, Package, Radio } from 'lucide-react';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import { 
+  Truck, 
+  CheckCircle2, 
+  Navigation, 
+  RefreshCw, 
+  KeyRound, 
+  AlertCircle, 
+  ArrowRight, 
+  Package, 
+  Radio,
+  MapPin
+} from 'lucide-react';
+
+const pickupIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-black.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+});
+
+const deliveryIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+});
+
+const driverIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+});
+
+// Helper: Auto-center map on moving driver
+const MapFollowDriver: React.FC<{ center: [number, number] }> = ({ center }) => {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, 15);
+  }, [center, map]);
+  return null;
+};
 
 interface DriverDashboardProps {
   user: User;
@@ -14,6 +54,8 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
   const [otpInput, setOtpInput] = useState<{ [orderId: string]: string }>({});
   const [isSimulatingGps, setIsSimulatingGps] = useState(false);
   const [isRealGpsBroadcasting, setIsRealGpsBroadcasting] = useState(false);
+  const [driverPosition, setDriverPosition] = useState<{ lat: number; lng: number } | null>(null);
+  const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -47,6 +89,33 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
     };
   }, []);
 
+  const activeOrder = myOrders.find((o) => o.status === 'ACCEPTED' || o.status === 'PICKED_UP');
+
+  // Fetch turn-by-turn road route from OSRM
+  useEffect(() => {
+    if (!activeOrder) return;
+
+    const startLat = driverPosition ? driverPosition.lat : activeOrder.pickupLat;
+    const startLng = driverPosition ? driverPosition.lng : activeOrder.pickupLng;
+
+    const targetLat = activeOrder.status === 'ACCEPTED' ? activeOrder.pickupLat : activeOrder.deliveryLat;
+    const targetLng = activeOrder.status === 'ACCEPTED' ? activeOrder.pickupLng : activeOrder.deliveryLng;
+
+    fetch(`https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${targetLng},${targetLat}?overview=full&geometries=geojson`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.routes && data.routes.length > 0) {
+          const coords: [number, number][] = data.routes[0].geometry.coordinates.map(
+            (c: [number, number]) => [c[1], c[0]]
+          );
+          setRouteCoordinates(coords);
+        }
+      })
+      .catch(() => {
+        setRouteCoordinates([[startLat, startLng], [targetLat, targetLng]]);
+      });
+  }, [activeOrder, driverPosition]);
+
   const handleAcceptOrder = async (orderId: string) => {
     try {
       await api.put(`/orders/${orderId}/accept`);
@@ -77,21 +146,20 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
     try {
       await api.post(`/orders/${orderId}/complete`, { otp });
       await fetchData();
+      setDriverPosition(null);
       alert('🎉 Delivery Handover Verified & Completed!');
     } catch (err: any) {
       alert(err.response?.data?.error || 'Invalid OTP');
     }
   };
 
-  const activeOrder = myOrders.find((o) => o.status === 'ACCEPTED' || o.status === 'PICKED_UP');
-
-  // 1. Simulated GPS (moves mathematically along route)
+  // 1. Simulated GPS (moves along route)
   useEffect(() => {
     if (!isSimulatingGps || !activeOrder) return;
 
     let progress = 0;
     const interval = setInterval(() => {
-      progress += 0.05;
+      progress += 0.04;
       if (progress > 1) {
         progress = 1;
         setIsSimulatingGps(false);
@@ -99,6 +167,8 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
 
       const currentLat = activeOrder.pickupLat + (activeOrder.deliveryLat - activeOrder.pickupLat) * progress;
       const currentLng = activeOrder.pickupLng + (activeOrder.deliveryLng - activeOrder.pickupLng) * progress;
+
+      setDriverPosition({ lat: currentLat, lng: currentLng });
 
       socket.emit('driver_location_update', {
         orderId: activeOrder.id,
@@ -111,7 +181,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
     return () => clearInterval(interval);
   }, [isSimulatingGps, activeOrder, user]);
 
-  // 2. Real Device GPS Stream (watches live phone/laptop GPS coordinates)
+  // 2. Real Device GPS Stream (phone hardware GPS)
   useEffect(() => {
     if (!isRealGpsBroadcasting || !activeOrder) return;
 
@@ -123,6 +193,8 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
         const { latitude, longitude } = position.coords;
+        setDriverPosition({ lat: latitude, lng: longitude });
+
         socket.emit('driver_location_update', {
           orderId: activeOrder.id,
           driverId: user.driver?.id || user.id,
@@ -156,7 +228,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
               Driver Operations Hub
             </h1>
             <p className="text-xs text-[#5D5F5F] font-['JetBrains_Mono',monospace]">
-              ACCEPT JOBS & BROADCAST REAL-TIME GPS
+              ACCEPT JOBS, NAVIGATE MAP & BROADCAST LIVE GPS
             </p>
           </div>
 
@@ -175,7 +247,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
           </div>
         )}
 
-        {/* Active Delivery Job Card */}
+        {/* Active Delivery Job Card with Interactive Navigation Map */}
         {activeOrder && (
           <div className="bg-[#f8f8f9] border border-black rounded-2xl p-6 shadow-xl space-y-4 font-['JetBrains_Mono',monospace]">
             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -188,9 +260,8 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
                 </h2>
               </div>
 
-              {/* GPS Broadcasting Controls (Real Device vs Simulated) */}
+              {/* GPS Broadcasting Controls */}
               <div className="flex items-center gap-2">
-                {/* Real GPS Toggle */}
                 <button
                   onClick={() => setIsRealGpsBroadcasting(!isRealGpsBroadcasting)}
                   className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold tracking-wider uppercase transition shadow-sm ${
@@ -200,10 +271,9 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
                   }`}
                 >
                   <Radio className="w-3.5 h-3.5" />
-                  {isRealGpsBroadcasting ? 'BROADCASTING REAL GPS' : 'USE REAL DEVICE GPS'}
+                  {isRealGpsBroadcasting ? 'BROADCASTING REAL GPS' : 'USE REAL PHONE GPS'}
                 </button>
 
-                {/* Simulate GPS Button */}
                 <button
                   onClick={() => setIsSimulatingGps(!isSimulatingGps)}
                   className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold tracking-wider uppercase transition shadow-sm ${
@@ -220,25 +290,91 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-black">
               <div className="p-3.5 bg-[#f0f0f2] rounded-xl border border-[#e4e4e7]">
-                <span className="text-[10px] text-[#71717a] uppercase font-bold block mb-1">Pickup Location</span>
+                <span className="text-[10px] text-[#71717a] uppercase font-bold block mb-1">
+                  {activeOrder.status === 'ACCEPTED' ? '🟢 Step 1: Head to Pickup' : 'Pickup Completed'}
+                </span>
                 📍 {activeOrder.pickupAddress}
               </div>
               <div className="p-3.5 bg-[#f0f0f2] rounded-xl border border-[#e4e4e7]">
-                <span className="text-[10px] text-[#71717a] uppercase font-bold block mb-1">Delivery Destination</span>
+                <span className="text-[10px] text-[#71717a] uppercase font-bold block mb-1">
+                  {activeOrder.status === 'PICKED_UP' ? '🔴 Step 2: Head to Delivery' : 'Final Destination'}
+                </span>
                 🏁 {activeOrder.deliveryAddress}
+              </div>
+            </div>
+
+            {/* 🗺️ Driver Live Turn-by-Turn Navigation Map */}
+            <div className="h-[380px] w-full rounded-xl overflow-hidden border border-[#e4e4e7] relative shadow-inner">
+              <MapContainer
+                center={[
+                  driverPosition ? driverPosition.lat : activeOrder.pickupLat,
+                  driverPosition ? driverPosition.lng : activeOrder.pickupLng
+                ]}
+                zoom={14}
+                scrollWheelZoom={true}
+                className="w-full h-full"
+              >
+                <MapFollowDriver 
+                  center={[
+                    driverPosition ? driverPosition.lat : activeOrder.pickupLat,
+                    driverPosition ? driverPosition.lng : activeOrder.pickupLng
+                  ]} 
+                />
+
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+
+                {/* Pickup Location Marker */}
+                <Marker position={[activeOrder.pickupLat, activeOrder.pickupLng]} icon={pickupIcon}>
+                  <Popup>🟢 Pickup: {activeOrder.pickupAddress}</Popup>
+                </Marker>
+
+                {/* Delivery Location Marker */}
+                <Marker position={[activeOrder.deliveryLat, activeOrder.deliveryLng]} icon={deliveryIcon}>
+                  <Popup>🔴 Destination: {activeOrder.deliveryAddress}</Popup>
+                </Marker>
+
+                {/* Driver Live Marker */}
+                {driverPosition && (
+                  <Marker position={[driverPosition.lat, driverPosition.lng]} icon={driverIcon}>
+                    <Popup>🛵 Your Location</Popup>
+                  </Marker>
+                )}
+
+                {/* Road Curve Polyline */}
+                {routeCoordinates.length > 0 && (
+                  <Polyline
+                    positions={routeCoordinates}
+                    color="#000000"
+                    weight={4}
+                    opacity={0.85}
+                  />
+                )}
+              </MapContainer>
+
+              <div className="absolute top-3 right-3 z-[1000] bg-black text-white px-3 py-1.5 rounded-lg flex items-center gap-2 text-[11px] font-bold shadow-md">
+                <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+                <span>NAVIGATION ACTIVE</span>
               </div>
             </div>
 
             {/* Action Bar */}
             <div className="flex flex-wrap items-center justify-between gap-4 pt-3 border-t border-[#e4e4e7]">
-              {activeOrder.status === 'ACCEPTED' && (
+              {activeOrder.status === 'ACCEPTED' ? (
                 <button
                   onClick={() => handleMarkPickedUp(activeOrder.id)}
                   className="bg-black hover:bg-[#27272a] text-white text-xs font-bold uppercase tracking-wider px-5 py-2.5 rounded-xl transition flex items-center gap-2"
                 >
                   <Truck className="w-4 h-4" />
-                  CONFIRM PICKUP
+                  CONFIRM PICKUP AT STORE
                 </button>
+              ) : (
+                <div className="flex items-center gap-2 text-xs font-bold text-emerald-600">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>PACKAGE ON BOARD — DELIVER TO CUSTOMER</span>
+                </div>
               )}
 
               {/* Handover OTP Verification */}
@@ -259,7 +395,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
                   className="bg-black hover:bg-[#27272a] text-white text-xs font-bold uppercase tracking-wider px-5 py-2 rounded-xl transition flex items-center gap-1.5"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  COMPLETE
+                  COMPLETE HANDOVER
                 </button>
               </div>
             </div>
