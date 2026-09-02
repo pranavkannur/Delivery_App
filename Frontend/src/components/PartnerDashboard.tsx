@@ -18,11 +18,11 @@ const storeIcon = new L.Icon({
   iconAnchor: [12, 41],
 });
 
-const deliveryIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-});
+// const deliveryIcon = new L.Icon({
+//   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+//   iconSize: [25, 41],
+//   iconAnchor: [12, 41],
+// });
 
 // Helper: Re-center map
 const MapRecenter: React.FC<{ center: [number, number] }> = ({ center }) => {
