@@ -67,8 +67,8 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
 
   // Dispatch Order Form State
   const [deliveryAddress, setDeliveryAddress] = useState('Customer Residence, Main Road');
-  const [deliveryLat, setDeliveryLat] = useState(17.6700);
-  const [deliveryLng, setDeliveryLng] = useState(75.9100);
+  const [deliveryLat] = useState(17.6700);
+const [deliveryLng] = useState(75.9100);
   const [itemName, setItemName] = useState('Large Margherita Pizza + Drink');
   const [itemPrice, setItemPrice] = useState('24.00');
 
