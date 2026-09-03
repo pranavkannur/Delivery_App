@@ -6,18 +6,14 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, useMapEvents 
 import L from 'leaflet';
 import { 
   Package, 
-  Search, 
   KeyRound, 
   RefreshCw, 
   ArrowRight, 
   Clock, 
-  Navigation,
-  MapPin,
   Plus,
   Store,
   ShoppingCart,
   Star,
-  Check
 } from 'lucide-react';
 
 const pickupIcon = new L.Icon({
@@ -69,7 +65,7 @@ export const CustomerDashboard: React.FC = () => {
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
   const [loading, setLoading] = useState(false);
   const [detectingGps, setDetectingGps] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  //const [searchQuery, setSearchQuery] = useState('');
 
   // Tab State: 'EXPLORE' (Store Marketplace) vs 'CUSTOM_PIN' (Manual)
   const [activeTab, setActiveTab] = useState<'EXPLORE' | 'CUSTOM_PIN'>('EXPLORE');
@@ -84,8 +80,8 @@ export const CustomerDashboard: React.FC = () => {
   // Address Search Autocomplete State
   const [addressInput, setAddressInput] = useState('Select address on map or type here');
   const [pickupAddress, setPickupAddress] = useState('Local Store & Bakery');
-  const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [isSearchingAddress, setIsSearchingAddress] = useState(false);
+  //const [suggestions, setSuggestions] = useState<any[]>([]);
+  //const [isSearchingAddress, setIsSearchingAddress] = useState(false);
 
   // Coordinates
   const [pickupLat, setPickupLat] = useState(17.6599);
@@ -199,31 +195,8 @@ export const CustomerDashboard: React.FC = () => {
   };
 
   // Address Search Autocomplete
-  const handleAddressSearch = async (text: string) => {
+    const handleAddressSearch = (text: string) => {
     setAddressInput(text);
-    if (text.trim().length < 3) {
-      setSuggestions([]);
-      return;
-    }
-    setIsSearchingAddress(true);
-    try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(text)}&limit=5`);
-      const data = await res.json();
-      setSuggestions(data || []);
-    } catch {
-      setSuggestions([]);
-    } finally {
-      setIsSearchingAddress(false);
-    }
-  };
-
-  const selectSuggestion = (s: any) => {
-    const lat = parseFloat(s.lat);
-    const lng = parseFloat(s.lon);
-    setAddressInput(s.display_name.split(',').slice(0, 3).join(','));
-    setDeliveryLat(lat);
-    setDeliveryLng(lng);
-    setSuggestions([]);
   };
 
   // Cart Management
