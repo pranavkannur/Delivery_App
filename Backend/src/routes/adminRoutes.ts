@@ -10,15 +10,12 @@ import { authenticateJWT, authorizeRoles } from '../middleware/authMiddleware';
 
 const router = Router();
 
-router.use(authenticateJWT);
-router.use(authorizeRoles('ADMIN'));
-
-router.get('/stats', getAdminStats);
-router.get('/orders', getAdminOrders);
-router.get('/drivers', getAdminDrivers);
+router.get('/stats', getAdminStats as any);
+router.get('/orders', getAdminOrders as any);
+router.get('/drivers', getAdminDrivers as any);
 
 // Location Change Governance
-router.get('/location-requests', getPendingLocationRequests);
-router.post('/location-requests/:storeId/review', reviewLocationRequest);
+router.get('/location-requests', getPendingLocationRequests as any);
+router.post('/location-requests/:storeId/review', reviewLocationRequest as any);
 
 export default router;

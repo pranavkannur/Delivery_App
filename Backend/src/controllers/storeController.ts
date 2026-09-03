@@ -36,22 +36,29 @@ export const getPartnerStores = async (req: Request, res: Response): Promise<voi
 // 2. Partner: Get My Store Profile, Menu Items & Lock Status
 export const getMyStore = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
     const partnerId = req.user.id;
+
     let store = await prisma.store.findUnique({
       where: { partnerId },
       include: { menuItems: true },
     });
 
-    // Auto-create store profile if it doesn't exist yet
     if (!store) {
+      const user = await prisma.user.findUnique({ where: { id: partnerId } });
+      const storeName = user?.name || 'Partner Store';
+
       store = await prisma.store.create({
         data: {
           partnerId,
-          name: req.user.name || 'Partner Store',
+          name: storeName,
           category: 'Bakery & Pastries',
           latitude: 17.6599,
           longitude: 75.9064,
-          address: `${req.user.name}, High Street`,
+          address: `${storeName}, High Street`,
           isLocationLocked: false,
           menuItems: {
             create: [
@@ -70,18 +77,24 @@ export const getMyStore = async (req: AuthenticatedRequest, res: Response): Prom
   }
 };
 
-// 3. Partner: Lock & Save Initial Shop Location (Only allowed ONCE)
+// 3. Partner: Lock & Save Initial Shop Location
 export const setInitialLocation = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
     const partnerId = req.user.id;
     const { address, latitude, longitude } = req.body;
 
     const existing = await prisma.store.findUnique({ where: { partnerId } });
-
     if (existing && existing.isLocationLocked) {
       res.status(400).json({ error: 'Shop location is already locked. Request change from Admin.' });
       return;
     }
+
+    const user = await prisma.user.findUnique({ where: { id: partnerId } });
+    const storeName = user?.name || 'Partner Store';
 
     const store = await prisma.store.upsert({
       where: { partnerId },
@@ -89,11 +102,11 @@ export const setInitialLocation = async (req: AuthenticatedRequest, res: Respons
         address,
         latitude: parseFloat(latitude),
         longitude: parseFloat(longitude),
-        isLocationLocked: true, // 🔒 Lock it permanently!
+        isLocationLocked: true,
       },
       create: {
         partnerId,
-        name: req.user.name,
+        name: storeName,
         address,
         latitude: parseFloat(latitude),
         longitude: parseFloat(longitude),
@@ -110,6 +123,10 @@ export const setInitialLocation = async (req: AuthenticatedRequest, res: Respons
 // 4. Partner: Request Location Change to Admin
 export const requestLocationChange = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
     const partnerId = req.user.id;
     const { requestedAddress, requestedLat, requestedLng, reason } = req.body;
 
@@ -136,6 +153,10 @@ export const requestLocationChange = async (req: AuthenticatedRequest, res: Resp
 // 5. Partner: Add Menu Item
 export const addMenuItem = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
     const partnerId = req.user.id;
     const { name, description, price } = req.body;
 
@@ -163,6 +184,10 @@ export const addMenuItem = async (req: AuthenticatedRequest, res: Response): Pro
 // 6. Partner: Delete Menu Item
 export const deleteMenuItem = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
     const partnerId = req.user.id;
     const itemId = req.params.itemId as string;
 
