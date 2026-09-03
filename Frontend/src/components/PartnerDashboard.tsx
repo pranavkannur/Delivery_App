@@ -8,14 +8,12 @@ import {
   Package, 
   RefreshCw, 
   ArrowRight, 
-  Navigation, 
   MapPin, 
   Lock, 
   Unlock, 
   Plus, 
   Trash2, 
   AlertCircle,
-  CheckCircle2
 } from 'lucide-react';
 
 const storeIcon = new L.Icon({
@@ -55,7 +53,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
   const [storeData, setStoreData] = useState<any | null>(null);
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [detectingGps, setDetectingGps] = useState(false);
+  //const [detectingGps, setDetectingGps] = useState(false);
 
   // Shop Coordinates State
   const [shopAddress, setShopAddress] = useState('');
