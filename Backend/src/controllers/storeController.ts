@@ -1,125 +1,186 @@
 import { Request, Response } from 'express';
 import prisma from '../config/db';
+import { AuthenticatedRequest } from '../middleware/authMiddleware';
 
+// 1. Customer: Get all open partner stores with real menus
 export const getPartnerStores = async (req: Request, res: Response): Promise<void> => {
   try {
-    // 1. Fetch all registered PARTNER users from database
-    const partners = await prisma.user.findMany({
-      where: { role: 'PARTNER' },
-      select: { id: true, name: true, phone: true, email: true },
+    const stores = await prisma.store.findMany({
+      include: {
+        menuItems: true,
+      },
     });
 
-    // 2. Default store catalogs with menus
-    const storeCatalogs = [
-      {
-        category: 'Bakery & Pastries',
-        rating: 4.9,
-        deliveryTime: '20-30 min',
-        image: '🥐',
-        menu: [
-          { id: 'm1', name: 'Artisan Sourdough Loaf', price: 6.5, desc: 'Freshly baked naturally leavened bread' },
-          { id: 'm2', name: 'Butter Almond Croissant', price: 4.2, desc: 'Flaky layers with toasted almonds' },
-          { id: 'm3', name: 'Cinnamon Swirl Roll', price: 3.8, desc: 'Glazed spiced cinnamon pastry' },
-        ],
-      },
-      {
-        category: 'Pizza & Italian',
-        rating: 4.8,
-        deliveryTime: '25-40 min',
-        image: '🍕',
-        menu: [
-          { id: 'm4', name: 'Woodfired Margherita Pizza', price: 14.0, desc: 'San Marzano tomatoes, fresh basil, mozzarella' },
-          { id: 'm5', name: 'Truffle & Mushroom Penne', price: 16.5, desc: 'Creamy black truffle sauce with parmesan' },
-          { id: 'm6', name: 'Garlic Herb Dough Sticks', price: 5.5, desc: 'Served with warm marinara dipping sauce' },
-        ],
-      },
-      {
-        category: 'Café & Beverages',
-        rating: 4.9,
-        deliveryTime: '15-25 min',
-        image: '☕',
-        menu: [
-          { id: 'm7', name: 'Single Origin Cold Brew (350ml)', price: 4.5, desc: 'Steeped for 18 hours with citrus notes' },
-          { id: 'm8', name: 'Iced Vanilla Oat Latte', price: 5.2, desc: 'Double espresso with organic oat milk' },
-          { id: 'm9', name: 'Matcha Green Tea Tonic', price: 4.8, desc: 'Ceremonial grade matcha with sparkling water' },
-        ],
-      },
-      {
-        category: 'Fresh Groceries',
-        rating: 4.7,
-        deliveryTime: '30-45 min',
-        image: '🥦',
-        menu: [
-          { id: 'm10', name: 'Organic Hass Avocados (Pack of 3)', price: 5.0, desc: 'Ripe ready-to-eat organic avocados' },
-          { id: 'm11', name: 'Farm Fresh Eggs (12 pcs)', price: 4.0, desc: 'Free range pasture raised eggs' },
-          { id: 'm12', name: 'Greek Honeycomb Yogurt (500g)', price: 4.5, desc: 'Thick strained probiotic yogurt' },
-        ],
-      },
-    ];
+    const formattedStores = stores.map((s) => ({
+      id: s.id,
+      name: s.name,
+      category: s.category,
+      rating: 4.9,
+      deliveryTime: '20-30 min',
+      image: s.category.includes('Pizza') ? '🍕' : s.category.includes('Café') ? '☕' : '🥐',
+      pickupAddress: s.address || `${s.name}, Commercial High Street`,
+      pickupLat: s.latitude || 17.6599,
+      pickupLng: s.longitude || 75.9064,
+      menu: s.menuItems.length > 0 ? s.menuItems : [
+        { id: 'def1', name: 'Specialty Item 1', price: 10.0, desc: 'Fresh daily specialty' },
+        { id: 'def2', name: 'Specialty Item 2', price: 15.0, desc: 'Chef recommendation' },
+      ],
+    }));
 
-    // Combine registered partners with store metadata
-    const stores = partners.map((partner, index) => {
-      const template = storeCatalogs[index % storeCatalogs.length];
-      return {
-        id: partner.id,
-        name: partner.name,
-        category: template.category,
-        rating: template.rating,
-        deliveryTime: template.deliveryTime,
-        image: template.image,
-        menu: template.menu,
-        pickupAddress: `${partner.name}, Commercial High Street`,
-        pickupLat: 17.6599 + (index * 0.005),
-        pickupLng: 75.9064 + (index * 0.005),
-      };
+    res.status(200).json({ stores: formattedStores });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to fetch stores' });
+  }
+};
+
+// 2. Partner: Get My Store Profile, Menu Items & Lock Status
+export const getMyStore = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const partnerId = req.user.id;
+    let store = await prisma.store.findUnique({
+      where: { partnerId },
+      include: { menuItems: true },
     });
 
-    // If no partners are registered yet, provide default featured stores
-    if (stores.length === 0) {
-      const defaultStores = [
-        {
-          id: 'store-1',
-          name: 'Artisan Bakery & Roastery',
+    // Auto-create store profile if it doesn't exist yet
+    if (!store) {
+      store = await prisma.store.create({
+        data: {
+          partnerId,
+          name: req.user.name || 'Partner Store',
           category: 'Bakery & Pastries',
-          rating: 4.9,
-          deliveryTime: '20-30 min',
-          image: '🥐',
-          pickupAddress: 'Artisan Bakery, High Street',
-          pickupLat: 17.6599,
-          pickupLng: 75.9064,
-          menu: storeCatalogs[0].menu,
+          latitude: 17.6599,
+          longitude: 75.9064,
+          address: `${req.user.name}, High Street`,
+          isLocationLocked: false,
+          menuItems: {
+            create: [
+              { name: 'Fresh Artisan Loaf', price: 6.5, description: 'Baked daily' },
+              { name: 'Butter Croissant', price: 4.0, description: 'Golden flaky layers' },
+            ],
+          },
         },
-        {
-          id: 'store-2',
-          name: 'Bella Italia Woodfired Oven',
-          category: 'Pizza & Italian',
-          rating: 4.8,
-          deliveryTime: '25-40 min',
-          image: '🍕',
-          pickupAddress: 'Bella Italia, Market Plaza',
-          pickupLat: 17.6650,
-          pickupLng: 75.9120,
-          menu: storeCatalogs[1].menu,
-        },
-        {
-          id: 'store-3',
-          name: 'Blue Bottle Espresso Bar',
-          category: 'Café & Beverages',
-          rating: 4.9,
-          deliveryTime: '15-25 min',
-          image: '☕',
-          pickupAddress: 'Blue Bottle, Central Avenue',
-          pickupLat: 17.6540,
-          pickupLng: 75.9010,
-          menu: storeCatalogs[2].menu,
-        },
-      ];
-      res.status(200).json({ stores: defaultStores });
+        include: { menuItems: true },
+      });
+    }
+
+    res.status(200).json({ store });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to fetch store' });
+  }
+};
+
+// 3. Partner: Lock & Save Initial Shop Location (Only allowed ONCE)
+export const setInitialLocation = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const partnerId = req.user.id;
+    const { address, latitude, longitude } = req.body;
+
+    const existing = await prisma.store.findUnique({ where: { partnerId } });
+
+    if (existing && existing.isLocationLocked) {
+      res.status(400).json({ error: 'Shop location is already locked. Request change from Admin.' });
       return;
     }
 
-    res.status(200).json({ stores });
+    const store = await prisma.store.upsert({
+      where: { partnerId },
+      update: {
+        address,
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+        isLocationLocked: true, // 🔒 Lock it permanently!
+      },
+      create: {
+        partnerId,
+        name: req.user.name,
+        address,
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+        isLocationLocked: true,
+      },
+    });
+
+    res.status(200).json({ message: 'Shop location locked successfully', store });
   } catch (error: any) {
-    res.status(500).json({ error: error.message || 'Failed to fetch stores' });
+    res.status(500).json({ error: error.message || 'Failed to lock location' });
+  }
+};
+
+// 4. Partner: Request Location Change to Admin
+export const requestLocationChange = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const partnerId = req.user.id;
+    const { requestedAddress, requestedLat, requestedLng, reason } = req.body;
+
+    const store = await prisma.store.update({
+      where: { partnerId },
+      data: {
+        pendingChange: {
+          requestedAddress,
+          requestedLat: parseFloat(requestedLat),
+          requestedLng: parseFloat(requestedLng),
+          reason: reason || 'Store relocation',
+          requestedAt: new Date().toISOString(),
+          status: 'PENDING',
+        },
+      },
+    });
+
+    res.status(200).json({ message: 'Location change request submitted to Admin', store });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to submit request' });
+  }
+};
+
+// 5. Partner: Add Menu Item
+export const addMenuItem = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const partnerId = req.user.id;
+    const { name, description, price } = req.body;
+
+    const store = await prisma.store.findUnique({ where: { partnerId } });
+    if (!store) {
+      res.status(404).json({ error: 'Store not found' });
+      return;
+    }
+
+    const item = await prisma.menuItem.create({
+      data: {
+        storeId: store.id,
+        name,
+        description: description || '',
+        price: parseFloat(price),
+      },
+    });
+
+    res.status(201).json({ message: 'Menu item added successfully', item });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to add menu item' });
+  }
+};
+
+// 6. Partner: Delete Menu Item
+export const deleteMenuItem = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const partnerId = req.user.id;
+    const itemId = req.params.itemId as string;
+
+    const store = await prisma.store.findUnique({ where: { partnerId } });
+    if (!store) {
+      res.status(404).json({ error: 'Store not found' });
+      return;
+    }
+
+    await prisma.menuItem.delete({
+      where: {
+        id: itemId,
+        storeId: store.id,
+      },
+    });
+
+    res.status(200).json({ message: 'Menu item removed successfully' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to delete menu item' });
   }
 };

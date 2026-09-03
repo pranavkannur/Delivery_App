@@ -1,9 +1,9 @@
 generator client {
   provider = "prisma-client-js"
 }
+
 datasource db {
   provider = "postgresql"
-
 }
 
 // User roles in our system
@@ -42,8 +42,39 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relations
-  orders Order[] @relation("CustomerOrders")
+  orders Order[]  @relation("CustomerOrders")
   driver Driver?
+  store  Store?
+}
+
+// Store profile for PARTNER users
+model Store {
+  id               String     @id @default(uuid())
+  partnerId        String     @unique
+  partner          User       @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  name             String
+  category         String     @default("Bakery & Pastries")
+  address          String?
+  latitude         Float?
+  longitude        Float?
+  isLocationLocked Boolean    @default(false)
+  pendingChange    Json?      // Holds { requestedAddress, requestedLat, requestedLng, reason, status: "PENDING" }
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  menuItems        MenuItem[]
+}
+
+// Menu items belonging to a store
+model MenuItem {
+  id          String   @id @default(uuid())
+  storeId     String
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  price       Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 // Driver details (only created for users who are drivers)
@@ -54,15 +85,14 @@ model Driver {
   vehicleType  VehicleType
   licensePlate String?
   isAvailable  Boolean     @default(true)
-  latitude     Float? // Live latitude for GPS tracking
-  longitude    Float? // Live longitude for GPS tracking
+  latitude     Float?
+  longitude    Float?
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
-  // Relations
+
   deliveries   Order[]     @relation("DriverDeliveries")
 }
 
-// Order model for deliveries
 // Order model for deliveries
 model Order {
   id              String        @id @default(uuid())

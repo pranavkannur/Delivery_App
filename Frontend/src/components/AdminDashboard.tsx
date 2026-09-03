@@ -10,7 +10,10 @@ import {
   Truck, 
   RefreshCw, 
   Search, 
-  Activity 
+  Activity,
+  CheckCircle2,
+  XCircle,
+  Store
 } from 'lucide-react';
 
 const pickupIcon = new L.Icon({
@@ -32,6 +35,7 @@ interface AdminDashboardProps {
 export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
   const [stats, setStats] = useState<any>(null);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [locationRequests, setLocationRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -39,12 +43,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
   const fetchAdminData = async () => {
     try {
       setLoading(true);
-      const [statsRes, ordersRes] = await Promise.all([
+      const [statsRes, ordersRes, reqsRes] = await Promise.all([
         api.get('/admin/stats'),
         api.get('/admin/orders'),
+        api.get('/admin/location-requests'),
       ]);
       setStats(statsRes.data.stats);
       setOrders(ordersRes.data.orders);
+      setLocationRequests(reqsRes.data.requests || []);
     } catch (err) {
       console.error('Error fetching admin data:', err);
     } finally {
@@ -55,7 +61,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
   useEffect(() => {
     fetchAdminData();
 
-    // Listen for live platform events
     const handleNewOrder = () => fetchAdminData();
     socket.on('new_order_available', handleNewOrder);
     socket.on('order_status_update', handleNewOrder);
@@ -65,6 +70,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
       socket.off('order_status_update', handleNewOrder);
     };
   }, []);
+
+  const handleReviewRelocation = async (storeId: string, action: 'APPROVE' | 'REJECT') => {
+    try {
+      await api.post(`/admin/location-requests/${storeId}/review`, { action });
+      await fetchAdminData();
+      alert(`Store relocation request ${action.toLowerCase()}ed!`);
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to review request');
+    }
+  };
 
   const filteredOrders = orders.filter((o) => {
     const matchesSearch =
@@ -107,9 +122,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
           </button>
         </div>
 
-        {/* Top KPI Cards (Design System Styled) */}
+        {/* Top KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-['JetBrains_Mono',monospace]">
-          {/* Revenue Card */}
           <div className="bg-[#f8f8f9] border border-[#e4e4e7] rounded-2xl p-5 shadow-sm">
             <div className="flex items-center justify-between text-[#71717a] mb-2">
               <span className="text-[11px] font-bold uppercase tracking-wider">Total Revenue</span>
@@ -123,7 +137,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
             <p className="text-[10px] text-[#5D5F5F] mt-1 font-semibold">FROM COMPLETED DELIVERIES</p>
           </div>
 
-          {/* Active Orders Card */}
           <div className="bg-[#f8f8f9] border border-[#e4e4e7] rounded-2xl p-5 shadow-sm">
             <div className="flex items-center justify-between text-[#71717a] mb-2">
               <span className="text-[11px] font-bold uppercase tracking-wider">In-Flight Deliveries</span>
@@ -137,7 +150,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
             <p className="text-[10px] text-emerald-600 mt-1 font-bold">LIVE REAL-TIME JOBS</p>
           </div>
 
-          {/* Total Orders Card */}
           <div className="bg-[#f8f8f9] border border-[#e4e4e7] rounded-2xl p-5 shadow-sm">
             <div className="flex items-center justify-between text-[#71717a] mb-2">
               <span className="text-[11px] font-bold uppercase tracking-wider">Total Orders Placed</span>
@@ -151,7 +163,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
             <p className="text-[10px] text-[#5D5F5F] mt-1 font-semibold">{stats ? stats.completedOrders : 0} DELIVERED</p>
           </div>
 
-          {/* Active Drivers Card */}
           <div className="bg-[#f8f8f9] border border-[#e4e4e7] rounded-2xl p-5 shadow-sm">
             <div className="flex items-center justify-between text-[#71717a] mb-2">
               <span className="text-[11px] font-bold uppercase tracking-wider">Fleet Drivers</span>
@@ -166,58 +177,111 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
           </div>
         </div>
 
-        {/* Global Live Fleet Map & In-Transit Orders */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-12 bg-[#f8f8f9] border border-[#e4e4e7] rounded-2xl p-6 shadow-md space-y-4 font-['JetBrains_Mono',monospace]">
+        {/* 🏬 Partner Store Relocation Requests Approval Panel (Admin Actionable) */}
+        {locationRequests.length > 0 && (
+          <div className="bg-[#f8f8f9] border border-amber-300 rounded-2xl p-6 shadow-md space-y-4 font-['JetBrains_Mono',monospace]">
             <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-black text-black uppercase tracking-wider flex items-center gap-2">
-                  <Activity className="w-4 h-4" />
-                  Live Multi-Delivery Fleet Radar
-                </h2>
-                <p className="text-[10px] text-[#71717a] mt-0.5">TRACKING ALL ACTIVE PACKAGES & FLEET POSITIONS</p>
-              </div>
+              <h2 className="text-sm font-black text-black uppercase tracking-wider flex items-center gap-2">
+                <Store className="w-4 h-4 text-amber-600" />
+                Store Relocation Requests Pending Approval ({locationRequests.length})
+              </h2>
+              <span className="text-[10px] bg-amber-500 text-white px-2 py-0.5 rounded font-bold uppercase">
+                ACTION REQUIRED
+              </span>
             </div>
 
-            <div className="h-[360px] w-full rounded-xl overflow-hidden border border-[#e4e4e7] relative shadow-inner">
-              <MapContainer
-                center={[37.7749, -122.4194]}
-                zoom={12}
-                scrollWheelZoom={false}
-                className="w-full h-full"
-              >
-                <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {locationRequests.map((req) => {
+                const change = req.pendingChange as any;
+                return (
+                  <div key={req.id} className="p-4 bg-[#f0f0f2] rounded-xl border border-[#e4e4e7] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-black">{req.name}</span>
+                      <span className="text-[10px] text-[#71717a]">{req.partner?.email}</span>
+                    </div>
 
-                {/* Render All Active Orders on the Admin Map */}
-                {orders
-                  .filter((o) => o.status !== 'DELIVERED' && o.status !== 'CANCELLED')
-                  .map((ord) => (
-                    <React.Fragment key={ord.id}>
-                      <Marker position={[ord.pickupLat, ord.pickupLng]} icon={pickupIcon}>
-                        <Popup>🟢 Pickup: #{ord.id.slice(0, 6)} - {ord.pickupAddress}</Popup>
-                      </Marker>
-                      <Marker position={[ord.deliveryLat, ord.deliveryLng]} icon={deliveryIcon}>
-                        <Popup>🔴 Delivery: #{ord.id.slice(0, 6)} - {ord.deliveryAddress}</Popup>
-                      </Marker>
-                      <Polyline
-                        positions={[
-                          [ord.pickupLat, ord.pickupLng],
-                          [ord.deliveryLat, ord.deliveryLng],
-                        ]}
-                        color="#000000"
-                        dashArray="4, 6"
-                      />
-                    </React.Fragment>
-                  ))}
-              </MapContainer>
+                    <div className="text-xs space-y-1">
+                      <div className="text-[#5D5F5F]">
+                        <span className="text-[10px] text-[#71717a] uppercase block">Current Location:</span>
+                        📍 {req.address}
+                      </div>
+                      <div className="text-black font-semibold">
+                        <span className="text-[10px] text-[#71717a] uppercase block">Requested New Location:</span>
+                        🏬 {change.requestedAddress}
+                      </div>
+                      <div className="text-[11px] text-[#5D5F5F] italic pt-1">
+                        "{change.reason}"
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-2 border-t border-[#e4e4e7]">
+                      <button
+                        onClick={() => handleReviewRelocation(req.id, 'APPROVE')}
+                        className="flex-1 bg-black hover:bg-[#27272a] text-white text-[11px] font-bold py-2 rounded-lg transition flex items-center justify-center gap-1.5 shadow-sm"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>APPROVE</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleReviewRelocation(req.id, 'REJECT')}
+                        className="flex-1 bg-[#f0f0f2] hover:bg-red-50 text-red-600 text-[11px] font-bold py-2 rounded-lg transition border border-red-200 flex items-center justify-center gap-1.5"
+                      >
+                        <XCircle className="w-3.5 h-3.5" />
+                        <span>REJECT</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
+          </div>
+        )}
+
+        {/* Global Live Fleet Map */}
+        <div className="bg-[#f8f8f9] border border-[#e4e4e7] rounded-2xl p-6 shadow-md space-y-4 font-['JetBrains_Mono',monospace]">
+          <h2 className="text-sm font-black text-black uppercase tracking-wider flex items-center gap-2">
+            <Activity className="w-4 h-4" />
+            Live Multi-Delivery Fleet Radar
+          </h2>
+
+          <div className="h-[360px] w-full rounded-xl overflow-hidden border border-[#e4e4e7] relative shadow-inner">
+            <MapContainer
+              center={[17.6599, 75.9064]}
+              zoom={13}
+              scrollWheelZoom={false}
+              className="w-full h-full"
+            >
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+
+              {orders
+                .filter((o) => o.status !== 'DELIVERED' && o.status !== 'CANCELLED')
+                .map((ord) => (
+                  <React.Fragment key={ord.id}>
+                    <Marker position={[ord.pickupLat, ord.pickupLng]} icon={pickupIcon}>
+                      <Popup>🟢 Pickup: #{ord.id.slice(0, 6)} - {ord.pickupAddress}</Popup>
+                    </Marker>
+                    <Marker position={[ord.deliveryLat, ord.deliveryLng]} icon={deliveryIcon}>
+                      <Popup>🔴 Delivery: #{ord.id.slice(0, 6)} - {ord.deliveryAddress}</Popup>
+                    </Marker>
+                    <Polyline
+                      positions={[
+                        [ord.pickupLat, ord.pickupLng],
+                        [ord.deliveryLat, ord.deliveryLng],
+                      ]}
+                      color="#000000"
+                      dashArray="4, 6"
+                    />
+                  </React.Fragment>
+                ))}
+            </MapContainer>
           </div>
         </div>
 
-        {/* Global Orders Table (Filterable & Searchable) */}
+        {/* Global Orders Table */}
         <div className="bg-[#f8f8f9] border border-[#e4e4e7] rounded-2xl p-6 shadow-md space-y-4 font-['JetBrains_Mono',monospace]">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <h2 className="text-sm font-black text-black uppercase tracking-wider flex items-center gap-2">
@@ -225,7 +289,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
               Global Orders Ledger ({filteredOrders.length})
             </h2>
 
-            {/* Filter & Search Bar */}
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative w-56">
                 <Search className="w-3.5 h-3.5 text-[#71717a] absolute left-3 top-2.5" />
@@ -238,7 +301,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
                 />
               </div>
 
-              {/* Status Pills */}
               {['ALL', 'PENDING', 'ACCEPTED', 'PICKED_UP', 'DELIVERED'].map((st) => (
                 <button
                   key={st}
@@ -255,7 +317,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = () => {
             </div>
           </div>
 
-          {/* Orders Table */}
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
