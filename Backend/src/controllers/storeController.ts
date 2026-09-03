@@ -11,7 +11,7 @@ export const getPartnerStores = async (req: Request, res: Response): Promise<voi
       },
     });
 
-    const formattedStores = stores.map((s) => ({
+        const formattedStores = stores.map((s) => ({
       id: s.id,
       name: s.name,
       category: s.category,
@@ -21,9 +21,9 @@ export const getPartnerStores = async (req: Request, res: Response): Promise<voi
       pickupAddress: s.address || `${s.name}, Store`,
       pickupLat: s.latitude || 0,
       pickupLng: s.longitude || 0,
+      isOpen: s.isOpen, // 🟢 Pass real status
       menu: s.menuItems,
     }));
-
     res.status(200).json({ stores: formattedStores });
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Failed to fetch stores' });
@@ -195,5 +195,32 @@ export const deleteMenuItem = async (req: AuthenticatedRequest, res: Response): 
     res.status(200).json({ message: 'Menu item removed successfully' });
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Failed to delete menu item' });
+  }
+};
+// 7. Partner: Toggle Store Open / Closed Status
+export const toggleStoreStatus = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+    const partnerId = req.user.id;
+
+    const store = await prisma.store.findUnique({ where: { partnerId } });
+    if (!store) {
+      res.status(404).json({ error: 'Store not found' });
+      return;
+    }
+
+    const updated = await prisma.store.update({
+      where: { partnerId },
+      data: {
+        isOpen: !store.isOpen, // Flip status
+      },
+    });
+
+    res.status(200).json({ message: `Store is now ${updated.isOpen ? 'OPEN' : 'CLOSED'}`, store: updated });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || 'Failed to toggle status' });
   }
 };
