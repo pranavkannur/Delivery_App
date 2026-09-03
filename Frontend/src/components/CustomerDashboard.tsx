@@ -13,7 +13,7 @@ import {
   Plus,
   Store,
   ShoppingCart,
-  Star,
+  Star
 } from 'lucide-react';
 
 const pickupIcon = new L.Icon({
@@ -34,8 +34,7 @@ const driverIcon = new L.Icon({
   iconAnchor: [12, 41],
 });
 
-// Helper: Smoothly fly and zoom to building level
-const MapRecenter: React.FC<{ center: [number, number]; zoom?: number }> = ({ center, zoom = 15 }) => {
+const MapRecenter: React.FC<{ center: [number, number]; zoom?: number }> = ({ center, zoom = 14 }) => {
   const map = useMap();
   useEffect(() => {
     map.flyTo(center, zoom, { duration: 1.0 });
@@ -43,7 +42,6 @@ const MapRecenter: React.FC<{ center: [number, number]; zoom?: number }> = ({ ce
   return null;
 };
 
-// Helper: Click on map to place precision pin
 const MapClickHandler: React.FC<{ onLocationSelect: (lat: number, lng: number) => void; isInteractive: boolean }> = ({ 
   onLocationSelect, 
   isInteractive 
@@ -65,9 +63,8 @@ export const CustomerDashboard: React.FC = () => {
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
   const [loading, setLoading] = useState(false);
   const [detectingGps, setDetectingGps] = useState(false);
-  //const [searchQuery, setSearchQuery] = useState('');
 
-  // Tab State: 'EXPLORE' (Store Marketplace) vs 'CUSTOM_PIN' (Manual)
+  // Tab State: 'EXPLORE' (Store Marketplace) vs 'CUSTOM_PIN'
   const [activeTab, setActiveTab] = useState<'EXPLORE' | 'CUSTOM_PIN'>('EXPLORE');
   const [isCreatingOrder, setIsCreatingOrder] = useState(true);
 
@@ -77,17 +74,13 @@ export const CustomerDashboard: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [cart, setCart] = useState<{ item: any; quantity: number }[]>([]);
 
-  // Address Search Autocomplete State
-  const [addressInput, setAddressInput] = useState('Select address on map or type here');
-  const [pickupAddress, setPickupAddress] = useState('Local Store & Bakery');
-  //const [suggestions, setSuggestions] = useState<any[]>([]);
-  //const [isSearchingAddress, setIsSearchingAddress] = useState(false);
-
-  // Coordinates
-  const [pickupLat, setPickupLat] = useState(17.6599);
-  const [pickupLng, setPickupLng] = useState(75.9064);
-  const [deliveryLat, setDeliveryLat] = useState(17.6700);
-  const [deliveryLng, setDeliveryLng] = useState(75.9100);
+  // Address and Coordinates State
+  const [addressInput, setAddressInput] = useState('Select address on map or click My Location');
+  const [pickupAddress, setPickupAddress] = useState('Store Pickup');
+  const [pickupLat, setPickupLat] = useState<number>(20.5937);
+  const [pickupLng, setPickupLng] = useState<number>(78.9629);
+  const [deliveryLat, setDeliveryLat] = useState<number>(20.5937);
+  const [deliveryLng, setDeliveryLng] = useState<number>(78.9629);
 
   const deliveryMarkerRef = useRef<any>(null);
 
@@ -100,12 +93,14 @@ export const CustomerDashboard: React.FC = () => {
         api.get('/stores'),
       ]);
       setOrders(ordersRes.data.orders);
-      setStores(storesRes.data.stores);
-      if (storesRes.data.stores.length > 0 && !selectedStore) {
-        setSelectedStore(storesRes.data.stores[0]);
-        setPickupAddress(storesRes.data.stores[0].pickupAddress);
-        setPickupLat(storesRes.data.stores[0].pickupLat);
-        setPickupLng(storesRes.data.stores[0].pickupLng);
+      const fetchedStores = storesRes.data.stores || [];
+      setStores(fetchedStores);
+
+      if (fetchedStores.length > 0 && !selectedStore) {
+        setSelectedStore(fetchedStores[0]);
+        setPickupAddress(fetchedStores[0].pickupAddress);
+        setPickupLat(fetchedStores[0].pickupLat);
+        setPickupLng(fetchedStores[0].pickupLng);
       }
     } catch (err) {
       console.error(err);
@@ -116,9 +111,16 @@ export const CustomerDashboard: React.FC = () => {
 
   useEffect(() => {
     fetchData();
+
+    // Auto-detect user's device location on launch
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition((pos) => {
+        handleMapLocationSelect(pos.coords.latitude, pos.coords.longitude);
+      });
+    }
   }, []);
 
-  // Fetch Road Route from OSRM
+  // Fetch Road Route (OSRM)
   const fetchRoadRoute = async (startLat: number, startLng: number, endLat: number, endLng: number) => {
     try {
       const res = await fetch(
@@ -149,7 +151,6 @@ export const CustomerDashboard: React.FC = () => {
   // WebSocket Live Updates
   useEffect(() => {
     if (!selectedOrder) return;
-
     socket.emit('join_order_room', selectedOrder.id);
 
     const handleDriverLocation = (data: { orderId: string; latitude: number; longitude: number }) => {
@@ -180,11 +181,10 @@ export const CustomerDashboard: React.FC = () => {
       const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
       const data = await res.json();
       if (data && data.display_name) {
-        const short = data.display_name.split(',').slice(0, 3).join(',');
-        setAddressInput(short);
+        setAddressInput(data.display_name.split(',').slice(0, 3).join(','));
       }
     } catch {
-      setAddressInput(`Pinpoint (${lat.toFixed(5)}, ${lng.toFixed(5)})`);
+      setAddressInput(`Doorstep (${lat.toFixed(5)}, ${lng.toFixed(5)})`);
     }
   };
 
@@ -192,11 +192,6 @@ export const CustomerDashboard: React.FC = () => {
     setDeliveryLat(lat);
     setDeliveryLng(lng);
     reverseGeocode(lat, lng);
-  };
-
-  // Address Search Autocomplete
-    const handleAddressSearch = (text: string) => {
-    setAddressInput(text);
   };
 
   // Cart Management
@@ -216,7 +211,6 @@ export const CustomerDashboard: React.FC = () => {
 
   const cartTotal = cart.reduce((sum, i) => sum + i.item.price * i.quantity, 0);
 
-  // Switch Store Selection
   const selectStore = (store: any) => {
     setSelectedStore(store);
     setPickupAddress(store.pickupAddress);
@@ -225,11 +219,21 @@ export const CustomerDashboard: React.FC = () => {
     setCart([]);
   };
 
-  // Place Order (From Cart or Custom Pin)
+  // Place Order
   const handlePlaceOrder = async () => {
-    if (cart.length === 0 && activeTab === 'EXPLORE') {
-      alert('Please add at least 1 item to your cart from the menu!');
-      return;
+    if (activeTab === 'EXPLORE') {
+      if (!selectedStore) {
+        alert('Please choose a store');
+        return;
+      }
+      if (!selectedStore.isOpen) {
+        alert('🔴 This store is currently CLOSED and not accepting orders.');
+        return;
+      }
+      if (cart.length === 0) {
+        alert('Please add at least 1 item to your basket!');
+        return;
+      }
     }
 
     try {
@@ -262,7 +266,7 @@ export const CustomerDashboard: React.FC = () => {
 
   const handleUseMyLocation = () => {
     setDetectingGps(true);
-    if (navigator.geolocation && window.isSecureContext) {
+    if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           handleMapLocationSelect(pos.coords.latitude, pos.coords.longitude);
@@ -276,7 +280,6 @@ export const CustomerDashboard: React.FC = () => {
       );
     } else {
       setDetectingGps(false);
-      alert('Location requires HTTPS');
     }
   };
 
@@ -303,7 +306,6 @@ export const CustomerDashboard: React.FC = () => {
             </p>
           </div>
 
-          {/* Mode Switchers */}
           <div className="flex items-center gap-3">
             <div className="bg-[#f0f0f2] p-1 rounded-xl border border-[#e4e4e7] flex items-center gap-1 font-['JetBrains_Mono',monospace]">
               <button
@@ -344,7 +346,6 @@ export const CustomerDashboard: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column: Stores & Menus / Order Form (5 cols) */}
           <div className="lg:col-span-5 space-y-6 font-['JetBrains_Mono',monospace]">
-            {/* 🛍️ EXPLORE SHOPS & MENU VIEW */}
             {activeTab === 'EXPLORE' && isCreatingOrder && (
               <div className="bg-[#f8f8f9] border border-black rounded-2xl p-6 shadow-md space-y-4">
                 <div className="flex items-center justify-between">
@@ -353,7 +354,7 @@ export const CustomerDashboard: React.FC = () => {
                     Explore Partner Stores
                   </h2>
                   <span className="text-[10px] bg-black text-white px-2 py-0.5 rounded font-bold">
-                    {stores.length} OPEN
+                    {stores.length} STORES
                   </span>
                 </div>
 
@@ -372,36 +373,47 @@ export const CustomerDashboard: React.FC = () => {
                   ))}
                 </div>
 
-                {/* Store Selector Cards */}
+                {/* Store Cards List */}
                 <div className="grid grid-cols-1 gap-2.5 max-h-52 overflow-y-auto pr-1">
-                  {stores
-                    .filter((s) => selectedCategory === 'ALL' || s.category.toLowerCase().includes(selectedCategory.toLowerCase()))
-                    .map((s) => (
-                      <div
-                        key={s.id}
-                        onClick={() => selectStore(s)}
-                        className={`p-3 rounded-xl border cursor-pointer transition flex items-center justify-between ${
-                          selectedStore?.id === s.id
-                            ? 'bg-black text-white border-black shadow-sm'
-                            : 'bg-[#f0f0f2] text-black border-[#e4e4e7] hover:border-[#d4d4d8]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="text-2xl">{s.image}</span>
-                          <div>
-                            <span className="text-xs font-bold block">{s.name}</span>
-                            <span className={`text-[10px] ${selectedStore?.id === s.id ? 'text-[#d4d4d8]' : 'text-[#71717a]'}`}>
-                              {s.category} • {s.deliveryTime}
-                            </span>
+                  {stores.length === 0 ? (
+                    <p className="text-xs text-[#a1a1aa] py-6 text-center">NO PARTNER STORES REGISTERED YET</p>
+                  ) : (
+                    stores
+                      .filter((s) => selectedCategory === 'ALL' || s.category.toLowerCase().includes(selectedCategory.toLowerCase()))
+                      .map((s) => (
+                        <div
+                          key={s.id}
+                          onClick={() => selectStore(s)}
+                          className={`p-3 rounded-xl border cursor-pointer transition flex items-center justify-between ${
+                            selectedStore?.id === s.id
+                              ? 'bg-black text-white border-black shadow-sm'
+                              : 'bg-[#f0f0f2] text-black border-[#e4e4e7] hover:border-[#d4d4d8]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl">{s.image}</span>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold">{s.name}</span>
+                                <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded uppercase ${
+                                  s.isOpen ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
+                                }`}>
+                                  {s.isOpen ? 'OPEN' : 'CLOSED'}
+                                </span>
+                              </div>
+                              <span className={`text-[10px] block ${selectedStore?.id === s.id ? 'text-[#d4d4d8]' : 'text-[#71717a]'}`}>
+                                {s.category} • {s.deliveryTime}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 text-[11px] font-bold">
+                            <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+                            <span>{s.rating}</span>
                           </div>
                         </div>
-
-                        <div className="flex items-center gap-1 text-[11px] font-bold">
-                          <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
-                          <span>{s.rating}</span>
-                        </div>
-                      </div>
-                    ))}
+                      ))
+                  )}
                 </div>
 
                 {/* Selected Store's Menu */}
@@ -409,33 +421,38 @@ export const CustomerDashboard: React.FC = () => {
                   <div className="pt-3 border-t border-[#e4e4e7] space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-black uppercase text-black">
-                        {selectedStore.name} Menu
+                        {selectedStore.name} Menu ({selectedStore.menu?.length || 0})
                       </span>
                       <span className="text-[10px] text-[#71717a]">CLICK TO ADD TO BASKET</span>
                     </div>
 
                     <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                      {selectedStore.menu.map((item: any) => (
-                        <div
-                          key={item.id}
-                          className="p-2.5 bg-[#f0f0f2] rounded-xl border border-[#e4e4e7] flex items-center justify-between"
-                        >
-                          <div>
-                            <span className="text-xs font-bold text-black block">{item.name}</span>
-                            <span className="text-[10px] text-[#71717a] block">{item.desc}</span>
-                            <span className="text-xs font-black text-black mt-0.5 block">${item.price.toFixed(2)}</span>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => addToCart(item)}
-                            className="bg-black hover:bg-[#27272a] text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition shadow-sm flex items-center gap-1"
+                      {(!selectedStore.menu || selectedStore.menu.length === 0) ? (
+                        <p className="text-xs text-[#a1a1aa] py-4 text-center">THIS STORE HAS NOT ADDED ITEMS YET</p>
+                      ) : (
+                        selectedStore.menu.map((item: any) => (
+                          <div
+                            key={item.id}
+                            className="p-2.5 bg-[#f0f0f2] rounded-xl border border-[#e4e4e7] flex items-center justify-between"
                           >
-                            <Plus className="w-3 h-3" />
-                            <span>ADD</span>
-                          </button>
-                        </div>
-                      ))}
+                            <div>
+                              <span className="text-xs font-bold text-black block">{item.name}</span>
+                              {item.description && <span className="text-[10px] text-[#71717a] block">{item.description}</span>}
+                              <span className="text-xs font-black text-black mt-0.5 block">${item.price.toFixed(2)}</span>
+                            </div>
+
+                            <button
+                              type="button"
+                              disabled={!selectedStore.isOpen}
+                              onClick={() => addToCart(item)}
+                              className="bg-black hover:bg-[#27272a] text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition shadow-sm flex items-center gap-1 disabled:opacity-50"
+                            >
+                              <Plus className="w-3 h-3" />
+                              <span>ADD</span>
+                            </button>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 )}
@@ -491,24 +508,29 @@ export const CustomerDashboard: React.FC = () => {
                   <input
                     type="text"
                     value={addressInput}
-                    onChange={(e) => handleAddressSearch(e.target.value)}
-                    placeholder="Type street or click doorstep on map..."
+                    onChange={(e) => setAddressInput(e.target.value)}
+                    placeholder="Click your doorstep on the map..."
                     className="w-full bg-[#f0f0f2] border border-[#e4e4e7] rounded-xl px-3 py-2 text-xs text-black focus:outline-none focus:border-black"
                   />
                 </div>
 
                 <button
                   type="button"
+                  disabled={selectedStore && !selectedStore.isOpen}
                   onClick={handlePlaceOrder}
-                  className="w-full bg-black hover:bg-[#27272a] text-white text-xs font-bold uppercase py-3 rounded-xl transition flex items-center justify-center gap-2 shadow-sm"
+                  className="w-full bg-black hover:bg-[#27272a] text-white text-xs font-bold uppercase py-3 rounded-xl transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
                 >
-                  <span>PLACE STORE ORDER (${cartTotal.toFixed(2)})</span>
+                  <span>
+                    {selectedStore && !selectedStore.isOpen 
+                      ? 'STORE IS CURRENTLY CLOSED' 
+                      : `PLACE STORE ORDER ($${cartTotal.toFixed(2)})`}
+                  </span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             )}
 
-            {/* 📍 CUSTOM PIN ORDER (MANUAL FORM) */}
+            {/* Custom Pin Tab */}
             {activeTab === 'CUSTOM_PIN' && isCreatingOrder && (
               <div className="bg-[#f8f8f9] border border-black rounded-2xl p-6 shadow-md space-y-3">
                 <h2 className="text-sm font-black text-black uppercase tracking-wider flex items-center gap-2">
@@ -535,7 +557,7 @@ export const CustomerDashboard: React.FC = () => {
                   <input
                     type="text"
                     value={addressInput}
-                    onChange={(e) => handleAddressSearch(e.target.value)}
+                    onChange={(e) => setAddressInput(e.target.value)}
                     className="w-full bg-[#f0f0f2] border border-[#e4e4e7] rounded-xl px-3 py-2 text-xs text-black focus:outline-none focus:border-black"
                   />
                 </div>
@@ -577,7 +599,7 @@ export const CustomerDashboard: React.FC = () => {
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-bold">#{ord.id.slice(0, 8).toUpperCase()}</span>
+                        <span className="text-xs font-bold">#{ord.id}</span>
                         <span
                           className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase ${
                             selectedOrder?.id === ord.id && !isCreatingOrder ? 'bg-white text-black' : 'bg-black text-white'
@@ -606,7 +628,7 @@ export const CustomerDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* Right Column: Interactive Map (7 cols) */}
+          {/* Right Column: Precision Map (7 cols) */}
           <div className="lg:col-span-7 space-y-6 font-['JetBrains_Mono',monospace]">
             <div className="bg-[#f8f8f9] border border-[#e4e4e7] rounded-2xl p-6 shadow-md space-y-4">
               {selectedOrder && !isCreatingOrder ? (
@@ -616,7 +638,7 @@ export const CustomerDashboard: React.FC = () => {
                       LIVE ROAD TRACKING
                     </span>
                     <h3 className="text-base font-black text-black mt-0.5">
-                      ORDER #{selectedOrder.id.slice(0, 8).toUpperCase()}
+                      ORDER #{selectedOrder.id}
                     </h3>
                     <p className="text-xs text-[#5D5F5F] font-semibold mt-0.5">
                       STATUS: {selectedOrder.status}
@@ -665,7 +687,6 @@ export const CustomerDashboard: React.FC = () => {
                     zoom={14}
                   />
 
-                  {/* Click Map to Drop Doorstep Pin */}
                   <MapClickHandler 
                     onLocationSelect={handleMapLocationSelect} 
                     isInteractive={isCreatingOrder} 
@@ -709,14 +730,14 @@ export const CustomerDashboard: React.FC = () => {
                     <Popup>🔴 Your Delivery Doorstep (Drag to adjust)</Popup>
                   </Marker>
 
-                  {/* Live Moving Driver Marker */}
+                  {/* Driver Position Marker */}
                   {driverLocation && !isCreatingOrder && (
                     <Marker position={[driverLocation.lat, driverLocation.lng]} icon={driverIcon}>
                       <Popup>🛵 Driver Live Position</Popup>
                     </Marker>
                   )}
 
-                  {/* Real Road Curve Polyline */}
+                  {/* Road Curve Polyline */}
                   {routeCoordinates.length > 0 && (
                     <Polyline
                       positions={routeCoordinates}
