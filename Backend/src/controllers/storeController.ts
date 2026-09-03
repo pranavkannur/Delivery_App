@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import prisma from '../config/db';
 import { AuthenticatedRequest } from '../middleware/authMiddleware';
 
-// 1. Customer: Get all open partner stores with real menus
+// 1. Customer: Get only real registered partner stores with their real menus
 export const getPartnerStores = async (req: Request, res: Response): Promise<void> => {
   try {
     const stores = await prisma.store.findMany({
@@ -18,13 +18,10 @@ export const getPartnerStores = async (req: Request, res: Response): Promise<voi
       rating: 4.9,
       deliveryTime: '20-30 min',
       image: s.category.includes('Pizza') ? '🍕' : s.category.includes('Café') ? '☕' : '🥐',
-      pickupAddress: s.address || `${s.name}, Commercial High Street`,
-      pickupLat: s.latitude || 17.6599,
-      pickupLng: s.longitude || 75.9064,
-      menu: s.menuItems.length > 0 ? s.menuItems : [
-        { id: 'def1', name: 'Specialty Item 1', price: 10.0, desc: 'Fresh daily specialty' },
-        { id: 'def2', name: 'Specialty Item 2', price: 15.0, desc: 'Chef recommendation' },
-      ],
+      pickupAddress: s.address || `${s.name}, Store`,
+      pickupLat: s.latitude || 0,
+      pickupLng: s.longitude || 0,
+      menu: s.menuItems,
     }));
 
     res.status(200).json({ stores: formattedStores });
@@ -33,7 +30,7 @@ export const getPartnerStores = async (req: Request, res: Response): Promise<voi
   }
 };
 
-// 2. Partner: Get My Store Profile, Menu Items & Lock Status
+// 2. Partner: Get My Store Profile & Real Menus
 export const getMyStore = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
@@ -49,23 +46,14 @@ export const getMyStore = async (req: AuthenticatedRequest, res: Response): Prom
 
     if (!store) {
       const user = await prisma.user.findUnique({ where: { id: partnerId } });
-      const storeName = user?.name || 'Partner Store';
+      const storeName = user?.name || 'My Store';
 
       store = await prisma.store.create({
         data: {
           partnerId,
           name: storeName,
           category: 'Bakery & Pastries',
-          latitude: 17.6599,
-          longitude: 75.9064,
-          address: `${storeName}, High Street`,
           isLocationLocked: false,
-          menuItems: {
-            create: [
-              { name: 'Fresh Artisan Loaf', price: 6.5, description: 'Baked daily' },
-              { name: 'Butter Croissant', price: 4.0, description: 'Golden flaky layers' },
-            ],
-          },
         },
         include: { menuItems: true },
       });
@@ -94,7 +82,7 @@ export const setInitialLocation = async (req: AuthenticatedRequest, res: Respons
     }
 
     const user = await prisma.user.findUnique({ where: { id: partnerId } });
-    const storeName = user?.name || 'Partner Store';
+    const storeName = user?.name || 'My Store';
 
     const store = await prisma.store.upsert({
       where: { partnerId },
@@ -150,7 +138,7 @@ export const requestLocationChange = async (req: AuthenticatedRequest, res: Resp
   }
 };
 
-// 5. Partner: Add Menu Item
+// 5. Partner: Add Real Menu Item
 export const addMenuItem = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
