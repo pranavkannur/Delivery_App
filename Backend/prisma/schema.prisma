@@ -58,6 +58,7 @@ model Store {
   latitude         Float?
   longitude        Float?
   isLocationLocked Boolean    @default(false)
+  isOpen           Boolean    @default(true)
   pendingChange    Json?      // Holds { requestedAddress, requestedLat, requestedLng, reason, status: "PENDING" }
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
@@ -95,7 +96,7 @@ model Driver {
 
 // Order model for deliveries
 model Order {
-  id              String        @id @default(uuid())
+  id              String        @id 
   customerId      String
   customer        User          @relation("CustomerOrders", fields: [customerId], references: [id])
   driverId        String?

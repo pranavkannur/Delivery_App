@@ -14,10 +14,17 @@ import {
   Plus, 
   Trash2, 
   AlertCircle,
+  Power
 } from 'lucide-react';
 
 const storeIcon = new L.Icon({
   iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-black.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+});
+
+const relocationIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
   iconSize: [25, 41],
   iconAnchor: [12, 41],
 });
@@ -53,12 +60,12 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
   const [storeData, setStoreData] = useState<any | null>(null);
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  //const [detectingGps, setDetectingGps] = useState(false);
+  const [isTogglingStatus, setIsTogglingStatus] = useState(false);
 
   // Shop Coordinates State
   const [shopAddress, setShopAddress] = useState('');
-  const [shopLat, setShopLat] = useState(17.6599);
-  const [shopLng, setShopLng] = useState(75.9064);
+  const [shopLat, setShopLat] = useState<number>(20.5937);
+  const [shopLng, setShopLng] = useState<number>(78.9629);
 
   // New Menu Item State
   const [newItemName, setNewItemName] = useState('');
@@ -68,18 +75,19 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
   // Relocation Request Modal State
   const [showRelocationModal, setShowRelocationModal] = useState(false);
   const [relocationAddress, setRelocationAddress] = useState('');
-  const [relocationLat, setRelocationLat] = useState(17.6599);
-  const [relocationLng, setRelocationLng] = useState(75.9064);
+  const [relocationLat, setRelocationLat] = useState<number>(20.5937);
+  const [relocationLng, setRelocationLng] = useState<number>(78.9629);
   const [relocationReason, setRelocationReason] = useState('');
 
   // Dispatch Order Form State
-  const [deliveryAddress, setDeliveryAddress] = useState('Customer Residence, Main Road');
-  const [deliveryLat] = useState(17.6700);
-  const [deliveryLng] = useState(75.9100);
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [deliveryLat] = useState(20.5937);
+  const [deliveryLng] = useState(78.9629);
   const [dispatchItemName, setDispatchItemName] = useState('');
   const [dispatchItemPrice, setDispatchItemPrice] = useState('25.00');
 
   const shopMarkerRef = useRef<any>(null);
+  const relocationMarkerRef = useRef<any>(null);
 
   const fetchStoreData = async () => {
     try {
@@ -91,10 +99,28 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
       const s = storeRes.data.store;
       setStoreData(s);
       setMenuItems(s.menuItems || []);
-      setShopAddress(s.address || `${user.name}, High Street`);
-      setShopLat(s.latitude || 17.6599);
-      setShopLng(s.longitude || 75.9064);
       setOrders(ordersRes.data.orders);
+
+      if (s.latitude && s.longitude) {
+        setShopLat(s.latitude);
+        setShopLng(s.longitude);
+        setShopAddress(s.address || `${user.name} Store`);
+      } else {
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition((pos) => {
+            setShopLat(pos.coords.latitude);
+            setShopLng(pos.coords.longitude);
+            fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`)
+              .then((res) => res.json())
+              .then((d) => {
+                if (d && d.display_name) {
+                  setShopAddress(d.display_name.split(',').slice(0, 3).join(','));
+                }
+              })
+              .catch(() => {});
+          });
+        }
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -106,22 +132,49 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
     fetchStoreData();
   }, []);
 
-  // 1. Initial One-Time Location Setup & Permanent Lock
+  // 1. Toggle Store Status (Accepting Orders vs Closed)
+  const handleToggleStoreStatus = async () => {
+    try {
+      setIsTogglingStatus(true);
+      const res = await api.post('/stores/toggle-status');
+      setStoreData(res.data.store);
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to change store status');
+    } finally {
+      setIsTogglingStatus(false);
+    }
+  };
+
+  // 2. Lock Initial Location
   const handleLockInitialLocation = async () => {
     try {
       await api.post('/stores/location/initial', {
-        address: shopAddress,
+        address: shopAddress || `${user.name} Store`,
         latitude: shopLat,
         longitude: shopLng,
       });
       await fetchStoreData();
-      alert('🔒 Shop Location Successfully Locked! Any future changes must be approved by an Admin.');
+      alert('🔒 Shop Location Successfully Locked! It cannot be changed without Admin approval.');
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to lock location');
     }
   };
 
-  // 2. Submit Relocation Request to Admin
+  // 3. Relocation Map Click & Reverse Geocode
+  const handleRelocationMapSelect = (lat: number, lng: number) => {
+    setRelocationLat(lat);
+    setRelocationLng(lng);
+    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && d.display_name) {
+          setRelocationAddress(d.display_name.split(',').slice(0, 3).join(','));
+        }
+      })
+      .catch(() => {});
+  };
+
+  // 4. Submit Relocation Request
   const handleSubmitRelocationRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -133,13 +186,13 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
       });
       setShowRelocationModal(false);
       await fetchStoreData();
-      alert('📝 Relocation request submitted! An Admin will review and approve it.');
+      alert('📝 Relocation request submitted to Admin for approval!');
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to submit relocation request');
     }
   };
 
-  // 3. Add Menu Item
+  // 5. Add Menu Item
   const handleAddMenuItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItemName || !newItemPrice) return;
@@ -153,15 +206,15 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
       setNewItemPrice('');
       setNewItemDesc('');
       await fetchStoreData();
-      alert('✅ Menu item added successfully!');
+      alert('✅ Menu item added to your store!');
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to add item');
     }
   };
 
-  // 4. Delete Menu Item
+  // 6. Delete Menu Item
   const handleDeleteMenuItem = async (itemId: string) => {
-    if (!confirm('Are you sure you want to remove this item from your store menu?')) return;
+    if (!confirm('Are you sure you want to remove this item?')) return;
     try {
       await api.delete(`/stores/menu/${itemId}`);
       await fetchStoreData();
@@ -170,7 +223,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
     }
   };
 
-  // 5. Dispatch Order
+  // 7. Dispatch Order
   const handleDispatchOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -185,13 +238,14 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
         totalAmount: parseFloat(dispatchItemPrice),
       });
       await fetchStoreData();
-      alert('📦 Order Dispatched with your locked Shop GPS!');
+      alert('📦 Order Dispatched to Drivers with your exact Shop GPS!');
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to dispatch order');
     }
   };
 
   const isLocked = storeData?.isLocationLocked;
+  const isOpen = storeData?.isOpen ?? true;
   const pendingChange = storeData?.pendingChange;
 
   return (
@@ -206,7 +260,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
       />
 
       <div className="relative max-w-7xl mx-auto space-y-6">
-        {/* Header */}
+        {/* Header with Store Status Toggle */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-black text-black uppercase font-['Hanken_Grotesk',sans-serif]">
@@ -217,15 +271,31 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
             </p>
           </div>
 
-          <button
-            onClick={fetchStoreData}
-            className="bg-[#f8f8f9] hover:bg-black hover:text-white text-[#5D5F5F] p-2.5 rounded-xl border border-[#e4e4e7] transition shadow-sm self-start sm:self-auto"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
+          <div className="flex items-center gap-3">
+            {/* 🟢 STORE OPEN / CLOSED TOGGLE SWITCH */}
+            <button
+              onClick={handleToggleStoreStatus}
+              disabled={isTogglingStatus}
+              className={`px-4 py-2 rounded-xl text-xs font-bold font-['JetBrains_Mono',monospace] transition flex items-center gap-2 shadow-sm border ${
+                isOpen
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700'
+                  : 'bg-red-600 hover:bg-red-700 text-white border-red-700'
+              }`}
+            >
+              <Power className="w-3.5 h-3.5" />
+              <span>{isOpen ? '🟢 ACCEPTING ORDERS' : '🔴 STORE CLOSED'}</span>
+            </button>
+
+            <button
+              onClick={fetchStoreData}
+              className="bg-[#f8f8f9] hover:bg-black hover:text-white text-[#5D5F5F] p-2.5 rounded-xl border border-[#e4e4e7] transition shadow-sm"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </div>
 
-        {/* Status Notification Banner */}
+        {/* Relocation Request Notice */}
         {pendingChange && pendingChange.status === 'PENDING' && (
           <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between font-['JetBrains_Mono',monospace]">
             <div className="flex items-center gap-3">
@@ -245,11 +315,11 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
           </div>
         )}
 
-        {/* 2-Column Main Layout */}
+        {/* 2-Column Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 font-['JetBrains_Mono',monospace]">
-          {/* Left Column: Location Lock & Menu Management (5 cols) */}
+          {/* Left Column: Location & Menus (5 cols) */}
           <div className="lg:col-span-5 space-y-6">
-            {/* 1. Shop Location Governance Card */}
+            {/* 1. Shop Location Governance */}
             <div className="bg-[#f8f8f9] border border-[#e4e4e7] rounded-2xl p-6 shadow-md space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-black text-black uppercase tracking-wider flex items-center gap-2">
@@ -278,6 +348,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
                   type="text"
                   disabled={isLocked}
                   value={shopAddress}
+                  placeholder="Click map to pick your shop location"
                   onChange={(e) => setShopAddress(e.target.value)}
                   className="w-full bg-[#f0f0f2] border border-[#e4e4e7] rounded-xl px-3.5 py-2 text-black text-xs disabled:opacity-75 disabled:cursor-not-allowed"
                 />
@@ -291,7 +362,6 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
                 {isLocked && <span className="text-black font-semibold">Protected Coordinates</span>}
               </div>
 
-              {/* Action Buttons based on Lock Status */}
               {!isLocked ? (
                 <button
                   type="button"
@@ -318,19 +388,19 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
               )}
             </div>
 
-            {/* 2. Menu Item Management Card (Add & Delete) */}
+            {/* 2. Menu Items Management */}
             <div className="bg-[#f8f8f9] border border-[#e4e4e7] rounded-2xl p-6 shadow-md space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-black text-black uppercase tracking-wider flex items-center gap-2">
                   <Package className="w-4 h-4" />
                   Store Menu ({menuItems.length})
                 </h2>
-                <span className="text-[10px] text-[#71717a]">CUSTOMERS SEE LIVE</span>
+                <span className="text-[10px] text-[#71717a]">LIVE FOR CUSTOMERS</span>
               </div>
 
               {/* Add Item Form */}
               <form onSubmit={handleAddMenuItem} className="p-3.5 bg-[#f0f0f2] rounded-xl border border-[#e4e4e7] space-y-2.5">
-                <span className="text-[10px] font-bold uppercase text-black block">Add New Dish / Product</span>
+                <span className="text-[10px] font-bold uppercase text-black block">Add Product / Dish</span>
 
                 <div className="grid grid-cols-3 gap-2">
                   <input
@@ -354,7 +424,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
 
                 <input
                   type="text"
-                  placeholder="Short description (e.g., fresh organic herbs)"
+                  placeholder="Short description"
                   value={newItemDesc}
                   onChange={(e) => setNewItemDesc(e.target.value)}
                   className="w-full bg-[#f8f8f9] border border-[#e4e4e7] rounded-lg px-2.5 py-1.5 text-xs text-black"
@@ -365,7 +435,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
                   className="w-full bg-black hover:bg-[#27272a] text-white text-[11px] font-bold uppercase py-2 rounded-lg transition flex items-center justify-center gap-1.5 shadow-sm"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>ADD TO STORE MENU</span>
+                  <span>ADD ITEM TO MENU</span>
                 </button>
               </form>
 
@@ -413,6 +483,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
                   <input
                     type="text"
                     required
+                    placeholder="Enter customer street address"
                     value={deliveryAddress}
                     onChange={(e) => setDeliveryAddress(e.target.value)}
                     className="w-full bg-[#f0f0f2] border border-[#e4e4e7] rounded-xl px-3.5 py-2 text-black text-xs"
@@ -421,12 +492,12 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
 
                 <div>
                   <label className="block text-[11px] font-semibold text-[#71717a] uppercase mb-1">
-                    Item Name
+                    Item Description
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Sourdough Loaf + Pastries"
+                    placeholder="e.g. Sourdough Loaf + Drink"
                     value={dispatchItemName}
                     onChange={(e) => setDispatchItemName(e.target.value)}
                     className="w-full bg-[#f0f0f2] border border-[#e4e4e7] rounded-xl px-3.5 py-2 text-black text-xs"
@@ -468,7 +539,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
                     Store Location Pinpoint
                   </h2>
                   <p className="text-[10px] text-[#71717a] mt-0.5">
-                    {isLocked ? '🔒 LOCATION LOCKED — CLICK "REQUEST RELOCATION" TO CHANGE' : 'CLICK MAP OR DRAG PIN TO YOUR ENTRANCE'}
+                    {isLocked ? '🔒 LOCATION LOCKED — SUBMIT REQUEST TO ADMIN TO RELOCATE' : 'CLICK MAP OR DRAG PIN TO YOUR SHOP ENTRANCE'}
                   </p>
                 </div>
               </div>
@@ -487,6 +558,12 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
                       if (!isLocked) {
                         setShopLat(lat);
                         setShopLng(lng);
+                        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+                          .then((r) => r.json())
+                          .then((d) => {
+                            if (d && d.display_name) setShopAddress(d.display_name.split(',').slice(0, 3).join(','));
+                          })
+                          .catch(() => {});
                       }
                     }} 
                     isInteractive={!isLocked} 
@@ -509,11 +586,17 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
                           const latLng = marker.getLatLng();
                           setShopLat(latLng.lat);
                           setShopLng(latLng.lng);
+                          fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latLng.lat}&lon=${latLng.lng}`)
+                            .then((r) => r.json())
+                            .then((d) => {
+                              if (d && d.display_name) setShopAddress(d.display_name.split(',').slice(0, 3).join(','));
+                            })
+                            .catch(() => {});
                         }
                       },
                     }}
                   >
-                    <Popup>🏬 {shopAddress}</Popup>
+                    <Popup>🏬 {shopAddress || 'My Shop'}</Popup>
                   </Marker>
                 </MapContainer>
               </div>
@@ -532,7 +615,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
                   orders.map((ord) => (
                     <div key={ord.id} className="p-3.5 bg-[#f0f0f2] rounded-xl border border-[#e4e4e7] flex items-center justify-between">
                       <div>
-                        <span className="text-xs font-bold text-black">#{ord.id.slice(0, 8).toUpperCase()}</span>
+                        <span className="text-xs font-bold text-black">{ord.id}</span>
                         <p className="text-xs text-[#5D5F5F] truncate max-w-sm mt-0.5">🏁 {ord.deliveryAddress}</p>
                       </div>
                       <div className="text-right">
@@ -549,42 +632,99 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
           </div>
         </div>
 
-        {/* Relocation Request Modal */}
+        {/* 🗺️ RELOCATION REQUEST MODAL WITH INTERACTIVE MAP */}
         {showRelocationModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[3000] flex items-center justify-center p-4 font-['JetBrains_Mono',monospace]">
-            <div className="bg-[#f8f8f9] border border-black rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="bg-[#f8f8f9] border border-black rounded-2xl p-6 max-w-2xl w-full shadow-2xl space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-black uppercase text-black flex items-center gap-2">
-                  <Unlock className="w-4 h-4" />
-                  Request Store Relocation
-                </h3>
-                <button onClick={() => setShowRelocationModal(false)} className="text-black font-bold">✕</button>
+                <div>
+                  <h3 className="text-sm font-black uppercase text-black flex items-center gap-2">
+                    <Unlock className="w-4 h-4" />
+                    Select New Store Location on Map
+                  </h3>
+                  <p className="text-[10px] text-[#71717a] mt-0.5">
+                    CLICK MAP OR DRAG RED PIN TO PINPOINT YOUR NEW STORE PREMISES
+                  </p>
+                </div>
+                <button onClick={() => setShowRelocationModal(false)} className="text-black font-bold p-1 hover:bg-[#e4e4e7] rounded-lg">✕</button>
+              </div>
+
+              {/* Interactive Modal Leaflet Map */}
+              <div className="h-[280px] w-full rounded-xl overflow-hidden border border-[#e4e4e7] relative shadow-inner cursor-crosshair">
+                <MapContainer
+                  center={[relocationLat, relocationLng]}
+                  zoom={15}
+                  scrollWheelZoom={true}
+                  className="w-full h-full"
+                >
+                  <MapRecenter center={[relocationLat, relocationLng]} />
+                  <MapClickHandler onSelect={handleRelocationMapSelect} isInteractive={true} />
+
+                  <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+
+                  {/* Relocation Marker */}
+                  <Marker
+                    position={[relocationLat, relocationLng]}
+                    icon={relocationIcon}
+                    draggable={true}
+                    ref={relocationMarkerRef}
+                    eventHandlers={{
+                      dragend() {
+                        const marker = relocationMarkerRef.current;
+                        if (marker) {
+                          const latLng = marker.getLatLng();
+                          handleRelocationMapSelect(latLng.lat, latLng.lng);
+                        }
+                      },
+                    }}
+                  >
+                    <Popup>📍 New Store Location: {relocationAddress}</Popup>
+                  </Marker>
+                </MapContainer>
               </div>
 
               <form onSubmit={handleSubmitRelocationRequest} className="space-y-3">
-                <div>
-                  <label className="text-[11px] font-bold text-[#71717a] uppercase block mb-1">
-                    New Store Address
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={relocationAddress}
-                    onChange={(e) => setRelocationAddress(e.target.value)}
-                    className="w-full bg-[#f0f0f2] border border-[#e4e4e7] rounded-xl px-3 py-2 text-xs text-black"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-[#71717a] uppercase block mb-1">
+                      New Street Address
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={relocationAddress}
+                      onChange={(e) => setRelocationAddress(e.target.value)}
+                      placeholder="Click map or type street address..."
+                      className="w-full bg-[#f0f0f2] border border-[#e4e4e7] rounded-xl px-3 py-2 text-xs text-black"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-[#71717a] uppercase block mb-1">
+                      Selected GPS Coordinates
+                    </label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={`${relocationLat.toFixed(5)}, ${relocationLng.toFixed(5)}`}
+                      className="w-full bg-[#e4e4e7]/60 border border-[#e4e4e7] rounded-xl px-3 py-2 text-xs text-[#5D5F5F] cursor-not-allowed"
+                    />
+                  </div>
                 </div>
 
                 <div>
                   <label className="text-[11px] font-bold text-[#71717a] uppercase block mb-1">
-                    Reason for Relocation
+                    Reason for Relocation (Required for Admin Approval)
                   </label>
                   <textarea
                     required
-                    placeholder="e.g. Moved to larger commercial space in North Solapur"
+                    placeholder="e.g. Relocating to new commercial market on 5th Avenue..."
                     value={relocationReason}
                     onChange={(e) => setRelocationReason(e.target.value)}
-                    className="w-full bg-[#f0f0f2] border border-[#e4e4e7] rounded-xl px-3 py-2 text-xs text-black h-20"
+                    className="w-full bg-[#f0f0f2] border border-[#e4e4e7] rounded-xl px-3 py-2 text-xs text-black h-16"
                   />
                 </div>
 
@@ -598,7 +738,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 rounded-xl text-xs font-bold bg-black text-white hover:bg-[#27272a]"
+                    className="px-4 py-2 rounded-xl text-xs font-bold bg-black text-white hover:bg-[#27272a] shadow-sm"
                   >
                     SUBMIT TO ADMIN
                   </button>

@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/authMiddleware';
 import prisma from '../config/db';
 import { getIO } from '../services/socketService';
-
+import crypto from 'crypto';
 // 1. Create a new Order (Customer only)
 export const createOrder = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
@@ -29,10 +29,15 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
     }
 
     // Generate a secure 4-digit Delivery Handover OTP (PIN)
+        // Generate a secure 4-digit Delivery Handover OTP (PIN)
     const deliveryOtp = Math.floor(1000 + Math.random() * 9000).toString();
+
+    // 🎯 Generate a clean, unique 8-character uppercase receipt code: e.g. "ORD-7F9A2B4C"
+    const orderId = `ORD-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
 
     const order = await prisma.order.create({
       data: {
+        id: orderId, // Store the clean unique ID directly in database!
         customerId,
         pickupAddress,
         deliveryAddress,
@@ -46,7 +51,7 @@ export const createOrder = async (req: AuthenticatedRequest, res: Response): Pro
         status: 'PENDING',
       },
     });
-
+ 
     // ⚡ Real-Time Alert: Notify all connected drivers about a new available order
     try {
       getIO().emit('new_order_available', {
