@@ -13,7 +13,11 @@ import {
   Clock, 
   Navigation,
   MapPin,
-  Plus
+  Plus,
+  Store,
+  ShoppingCart,
+  Star,
+  Check
 } from 'lucide-react';
 
 const pickupIcon = new L.Icon({
@@ -34,7 +38,7 @@ const driverIcon = new L.Icon({
   iconAnchor: [12, 41],
 });
 
-// Helper: Smoothly fly and zoom to building level (zoom: 16)
+// Helper: Smoothly fly and zoom to building level
 const MapRecenter: React.FC<{ center: [number, number]; zoom?: number }> = ({ center, zoom = 15 }) => {
   const map = useMap();
   useEffect(() => {
@@ -67,8 +71,15 @@ export const CustomerDashboard: React.FC = () => {
   const [detectingGps, setDetectingGps] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Mode: true = Creating New Order (Pin placement active), false = Tracking selected order
+  // Tab State: 'EXPLORE' (Store Marketplace) vs 'CUSTOM_PIN' (Manual)
+  const [activeTab, setActiveTab] = useState<'EXPLORE' | 'CUSTOM_PIN'>('EXPLORE');
   const [isCreatingOrder, setIsCreatingOrder] = useState(true);
+
+  // Stores Catalog State
+  const [stores, setStores] = useState<any[]>([]);
+  const [selectedStore, setSelectedStore] = useState<any | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState('ALL');
+  const [cart, setCart] = useState<{ item: any; quantity: number }[]>([]);
 
   // Address Search Autocomplete State
   const [addressInput, setAddressInput] = useState('Select address on map or type here');
@@ -76,30 +87,39 @@ export const CustomerDashboard: React.FC = () => {
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
 
-  // Default Center Coordinates (Precision Pin)
-  const [pickupLat, setPickupLat] = useState(37.7749);
-  const [pickupLng, setPickupLng] = useState(-122.4194);
-  const [deliveryLat, setDeliveryLat] = useState(37.7889);
-  const [deliveryLng, setDeliveryLng] = useState(-122.4014);
-  const [totalAmount, setTotalAmount] = useState('32.00');
+  // Coordinates
+  const [pickupLat, setPickupLat] = useState(17.6599);
+  const [pickupLng, setPickupLng] = useState(75.9064);
+  const [deliveryLat, setDeliveryLat] = useState(17.6700);
+  const [deliveryLng, setDeliveryLng] = useState(75.9100);
 
   const deliveryMarkerRef = useRef<any>(null);
 
-  // Fetch Orders
-  const fetchOrders = async () => {
+  // Fetch Stores Catalog & Orders
+  const fetchData = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/orders');
-      setOrders(res.data.orders);
+      const [ordersRes, storesRes] = await Promise.all([
+        api.get('/orders'),
+        api.get('/stores'),
+      ]);
+      setOrders(ordersRes.data.orders);
+      setStores(storesRes.data.stores);
+      if (storesRes.data.stores.length > 0 && !selectedStore) {
+        setSelectedStore(storesRes.data.stores[0]);
+        setPickupAddress(storesRes.data.stores[0].pickupAddress);
+        setPickupLat(storesRes.data.stores[0].pickupLat);
+        setPickupLng(storesRes.data.stores[0].pickupLng);
+      }
     } catch (err) {
-      console.error('Error fetching orders:', err);
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchOrders();
+    fetchData();
   }, []);
 
   // Fetch Road Route from OSRM
@@ -120,7 +140,6 @@ export const CustomerDashboard: React.FC = () => {
     }
   };
 
-  // Re-fetch route when in tracking mode
   useEffect(() => {
     if (!selectedOrder) {
       fetchRoadRoute(pickupLat, pickupLng, deliveryLat, deliveryLng);
@@ -146,7 +165,7 @@ export const CustomerDashboard: React.FC = () => {
     const handleStatusUpdate = (data: { orderId: string; status: any; driver?: any }) => {
       if (data.orderId === selectedOrder.id) {
         setSelectedOrder((prev) => (prev ? { ...prev, status: data.status, driver: data.driver || prev.driver } : null));
-        fetchOrders();
+        fetchData();
       }
     };
 
@@ -159,7 +178,7 @@ export const CustomerDashboard: React.FC = () => {
     };
   }, [selectedOrder?.id]);
 
-  // Reverse Geocode helper
+  // Reverse Geocode
   const reverseGeocode = async (lat: number, lng: number) => {
     try {
       const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
@@ -167,39 +186,32 @@ export const CustomerDashboard: React.FC = () => {
       if (data && data.display_name) {
         const short = data.display_name.split(',').slice(0, 3).join(',');
         setAddressInput(short);
-        setPickupAddress('Bakery near ' + data.display_name.split(',')[0]);
       }
     } catch {
       setAddressInput(`Pinpoint (${lat.toFixed(5)}, ${lng.toFixed(5)})`);
     }
   };
 
-  // Handle User Clicking or Dragging Pin on Map (100% Precision)
   const handleMapLocationSelect = (lat: number, lng: number) => {
     setDeliveryLat(lat);
     setDeliveryLng(lng);
-    setPickupLat(lat - 0.005);
-    setPickupLng(lng - 0.005);
     reverseGeocode(lat, lng);
   };
 
-  // Live Address Autocomplete Search
+  // Address Search Autocomplete
   const handleAddressSearch = async (text: string) => {
     setAddressInput(text);
     if (text.trim().length < 3) {
       setSuggestions([]);
       return;
     }
-
     setIsSearchingAddress(true);
     try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(text)}&limit=5`
-      );
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(text)}&limit=5`);
       const data = await res.json();
       setSuggestions(data || []);
-    } catch (err) {
-      console.error(err);
+    } catch {
+      setSuggestions([]);
     } finally {
       setIsSearchingAddress(false);
     }
@@ -211,12 +223,70 @@ export const CustomerDashboard: React.FC = () => {
     setAddressInput(s.display_name.split(',').slice(0, 3).join(','));
     setDeliveryLat(lat);
     setDeliveryLng(lng);
-    setPickupLat(lat - 0.005);
-    setPickupLng(lng - 0.005);
     setSuggestions([]);
   };
 
-  // Detect Current Location (Smart Fallback)
+  // Cart Management
+  const addToCart = (item: any) => {
+    setCart((prev) => {
+      const existing = prev.find((i) => i.item.id === item.id);
+      if (existing) {
+        return prev.map((i) => (i.item.id === item.id ? { ...i, quantity: i.quantity + 1 } : i));
+      }
+      return [...prev, { item, quantity: 1 }];
+    });
+  };
+
+  const removeFromCart = (itemId: string) => {
+    setCart((prev) => prev.filter((i) => i.item.id !== itemId));
+  };
+
+  const cartTotal = cart.reduce((sum, i) => sum + i.item.price * i.quantity, 0);
+
+  // Switch Store Selection
+  const selectStore = (store: any) => {
+    setSelectedStore(store);
+    setPickupAddress(store.pickupAddress);
+    setPickupLat(store.pickupLat);
+    setPickupLng(store.pickupLng);
+    setCart([]);
+  };
+
+  // Place Order (From Cart or Custom Pin)
+  const handlePlaceOrder = async () => {
+    if (cart.length === 0 && activeTab === 'EXPLORE') {
+      alert('Please add at least 1 item to your cart from the menu!');
+      return;
+    }
+
+    try {
+      const itemsToOrder = activeTab === 'EXPLORE' 
+        ? cart.map((c) => ({ name: c.item.name, quantity: c.quantity, price: c.item.price }))
+        : [{ name: 'Custom Package Delivery', quantity: 1, price: 25.0 }];
+
+      const total = activeTab === 'EXPLORE' ? cartTotal : 25.0;
+
+      const res = await api.post('/orders', {
+        pickupAddress,
+        deliveryAddress: addressInput,
+        pickupLat,
+        pickupLng,
+        deliveryLat,
+        deliveryLng,
+        items: itemsToOrder,
+        totalAmount: total,
+      });
+
+      await fetchData();
+      setSelectedOrder(res.data.order);
+      setIsCreatingOrder(false);
+      setCart([]);
+      alert('🎉 Order Placed with the Store!');
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to place order');
+    }
+  };
+
   const handleUseMyLocation = () => {
     setDetectingGps(true);
     if (navigator.geolocation && window.isSecureContext) {
@@ -225,60 +295,17 @@ export const CustomerDashboard: React.FC = () => {
           handleMapLocationSelect(pos.coords.latitude, pos.coords.longitude);
           setDetectingGps(false);
         },
-        async () => {
-          await fetchIpFallback();
+        () => {
+          setDetectingGps(false);
+          alert('Could not retrieve location');
         },
         { enableHighAccuracy: true, timeout: 5000 }
       );
     } else {
-      fetchIpFallback();
-    }
-
-    async function fetchIpFallback() {
-      try {
-        const res = await fetch('https://ipapi.co/json/');
-        const data = await res.json();
-        if (data && data.latitude && data.longitude) {
-          handleMapLocationSelect(data.latitude, data.longitude);
-        }
-      } catch {
-        alert('Could not determine city');
-      } finally {
-        setDetectingGps(false);
-      }
+      setDetectingGps(false);
+      alert('Location requires HTTPS');
     }
   };
-
-  const handleCreateOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const res = await api.post('/orders', {
-        pickupAddress,
-        deliveryAddress: addressInput,
-        pickupLat,
-        pickupLng,
-        deliveryLat,
-        deliveryLng,
-        items: [
-          { name: 'Gourmet Sourdough Bread', quantity: 2, price: 10.0 },
-          { name: 'Fresh Espresso Beans (250g)', quantity: 1, price: 12.0 },
-        ],
-        totalAmount: parseFloat(totalAmount),
-      });
-
-      await fetchOrders();
-      setSelectedOrder(res.data.order);
-      setIsCreatingOrder(false);
-      alert('🎉 Order Placed Successfully!');
-    } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to place order');
-    }
-  };
-
-  const filteredOrders = orders.filter((o) =>
-    o.deliveryAddress.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    o.id.toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
   return (
     <div className="min-h-[calc(100vh-65px)] bg-[#ececee] p-6 relative font-['Inter',sans-serif]">
@@ -299,41 +326,40 @@ export const CustomerDashboard: React.FC = () => {
               Customer Hub
             </h1>
             <p className="text-xs text-[#5D5F5F] font-['JetBrains_Mono',monospace]">
-              PRECISION PINPOINT DELIVERY & LIVE ROAD ROUTING
+              EXPLORE SHOPS, ORDER ITEMS & TRACK LIVE DELIVERIES
             </p>
           </div>
 
+          {/* Mode Switchers */}
           <div className="flex items-center gap-3">
-            {/* New Order Switcher Button */}
-            <button
-              onClick={() => {
-                setIsCreatingOrder(true);
-                setSelectedOrder(null);
-                setDriverLocation(null);
-              }}
-              className={`px-4 py-2 rounded-xl text-xs font-bold font-['JetBrains_Mono',monospace] transition shadow-sm flex items-center gap-1.5 ${
-                isCreatingOrder
-                  ? 'bg-black text-white'
-                  : 'bg-[#f8f8f9] hover:bg-black hover:text-white text-black border border-[#e4e4e7]'
-              }`}
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>NEW ORDER (PIN DROP)</span>
-            </button>
+            <div className="bg-[#f0f0f2] p-1 rounded-xl border border-[#e4e4e7] flex items-center gap-1 font-['JetBrains_Mono',monospace]">
+              <button
+                onClick={() => {
+                  setActiveTab('EXPLORE');
+                  setIsCreatingOrder(true);
+                }}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase transition ${
+                  activeTab === 'EXPLORE' && isCreatingOrder ? 'bg-black text-white shadow-sm' : 'text-[#71717a] hover:text-black'
+                }`}
+              >
+                🛍️ EXPLORE SHOPS
+              </button>
 
-            <div className="relative w-56">
-              <Search className="w-4 h-4 text-[#71717a] absolute left-3 top-3" />
-              <input
-                type="text"
-                placeholder="Search orders..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-[#f8f8f9] border border-[#e4e4e7] rounded-xl pl-9 pr-3 py-2 text-xs font-['JetBrains_Mono',monospace] text-black placeholder-[#a1a1aa] focus:outline-none focus:border-black transition shadow-sm"
-              />
+              <button
+                onClick={() => {
+                  setActiveTab('CUSTOM_PIN');
+                  setIsCreatingOrder(true);
+                }}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase transition ${
+                  activeTab === 'CUSTOM_PIN' && isCreatingOrder ? 'bg-black text-white shadow-sm' : 'text-[#71717a] hover:text-black'
+                }`}
+              >
+                📍 CUSTOM PIN
+              </button>
             </div>
 
             <button
-              onClick={fetchOrders}
+              onClick={fetchData}
               className="bg-[#f8f8f9] hover:bg-black hover:text-white text-[#5D5F5F] p-2.5 rounded-xl border border-[#e4e4e7] transition shadow-sm"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -343,116 +369,227 @@ export const CustomerDashboard: React.FC = () => {
 
         {/* 2-Column Main Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left Column: Place Order Form & Orders Feed (5 cols) */}
-          <div className="lg:col-span-5 space-y-6">
-            {/* Create Order Card */}
-            <div className={`bg-[#f8f8f9] border rounded-2xl p-6 shadow-md transition ${isCreatingOrder ? 'border-black ring-1 ring-black' : 'border-[#e4e4e7]'}`}>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-black text-black uppercase tracking-wider font-['JetBrains_Mono',monospace] flex items-center gap-2">
-                  <Package className="w-4 h-4 text-black" />
-                  Place Delivery Order
-                </h2>
+          {/* Left Column: Stores & Menus / Order Form (5 cols) */}
+          <div className="lg:col-span-5 space-y-6 font-['JetBrains_Mono',monospace]">
+            {/* 🛍️ EXPLORE SHOPS & MENU VIEW */}
+            {activeTab === 'EXPLORE' && isCreatingOrder && (
+              <div className="bg-[#f8f8f9] border border-black rounded-2xl p-6 shadow-md space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-black text-black uppercase tracking-wider flex items-center gap-2">
+                    <Store className="w-4 h-4" />
+                    Explore Partner Stores
+                  </h2>
+                  <span className="text-[10px] bg-black text-white px-2 py-0.5 rounded font-bold">
+                    {stores.length} OPEN
+                  </span>
+                </div>
 
-                <button
-                  type="button"
-                  onClick={handleUseMyLocation}
-                  disabled={detectingGps}
-                  className="bg-black hover:bg-[#27272a] text-white text-[10px] font-bold font-['JetBrains_Mono',monospace] px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition shadow-sm"
-                >
-                  <Navigation className={`w-3 h-3 ${detectingGps ? 'animate-spin' : ''}`} />
-                  <span>{detectingGps ? 'LOCATING...' : 'MY CITY'}</span>
-                </button>
-              </div>
+                {/* Category Pills */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 text-[10px]">
+                  {['ALL', 'Bakery', 'Pizza', 'Café', 'Groceries'].map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => setSelectedCategory(cat)}
+                      className={`px-2.5 py-1 rounded-lg font-bold uppercase transition shrink-0 ${
+                        selectedCategory === cat ? 'bg-black text-white' : 'bg-[#f0f0f2] text-[#71717a] border border-[#e4e4e7]'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
 
-              <form onSubmit={handleCreateOrder} className="space-y-3">
-                {/* Delivery Address with Live Autocomplete */}
-                <div className="relative">
-                  <label className="block text-[11px] font-semibold text-[#71717a] font-['JetBrains_Mono',monospace] tracking-wider uppercase mb-1">
-                    Delivery Address (Type or Click Map)
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      required
-                      placeholder="Search street, apartment, or click map..."
-                      value={addressInput}
-                      onChange={(e) => handleAddressSearch(e.target.value)}
-                      onFocus={() => setIsCreatingOrder(true)}
-                      className="w-full bg-[#f0f0f2] border border-[#e4e4e7] rounded-xl px-3.5 py-2 text-black text-xs font-['JetBrains_Mono',monospace] focus:outline-none focus:border-black transition"
-                    />
-                    {isSearchingAddress && (
-                      <div className="absolute right-3 top-2.5 w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                    )}
-                  </div>
+                {/* Store Selector Cards */}
+                <div className="grid grid-cols-1 gap-2.5 max-h-52 overflow-y-auto pr-1">
+                  {stores
+                    .filter((s) => selectedCategory === 'ALL' || s.category.toLowerCase().includes(selectedCategory.toLowerCase()))
+                    .map((s) => (
+                      <div
+                        key={s.id}
+                        onClick={() => selectStore(s)}
+                        className={`p-3 rounded-xl border cursor-pointer transition flex items-center justify-between ${
+                          selectedStore?.id === s.id
+                            ? 'bg-black text-white border-black shadow-sm'
+                            : 'bg-[#f0f0f2] text-black border-[#e4e4e7] hover:border-[#d4d4d8]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">{s.image}</span>
+                          <div>
+                            <span className="text-xs font-bold block">{s.name}</span>
+                            <span className={`text-[10px] ${selectedStore?.id === s.id ? 'text-[#d4d4d8]' : 'text-[#71717a]'}`}>
+                              {s.category} • {s.deliveryTime}
+                            </span>
+                          </div>
+                        </div>
 
-                  {/* Autocomplete Suggestions Dropdown */}
-                  {suggestions.length > 0 && (
-                    <div className="absolute left-0 right-0 top-full mt-1 bg-[#f8f8f9] border border-[#e4e4e7] rounded-xl shadow-2xl z-[2000] overflow-hidden divide-y divide-[#e4e4e7]">
-                      {suggestions.map((s, idx) => (
+                        <div className="flex items-center gap-1 text-[11px] font-bold">
+                          <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
+                          <span>{s.rating}</span>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+
+                {/* Selected Store's Menu */}
+                {selectedStore && (
+                  <div className="pt-3 border-t border-[#e4e4e7] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black uppercase text-black">
+                        {selectedStore.name} Menu
+                      </span>
+                      <span className="text-[10px] text-[#71717a]">CLICK TO ADD TO BASKET</span>
+                    </div>
+
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      {selectedStore.menu.map((item: any) => (
                         <div
-                          key={idx}
-                          onClick={() => selectSuggestion(s)}
-                          className="p-2.5 text-xs text-black hover:bg-black hover:text-white cursor-pointer transition font-['JetBrains_Mono',monospace] flex items-start gap-2"
+                          key={item.id}
+                          className="p-2.5 bg-[#f0f0f2] rounded-xl border border-[#e4e4e7] flex items-center justify-between"
                         >
-                          <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                          <span className="truncate">{s.display_name}</span>
+                          <div>
+                            <span className="text-xs font-bold text-black block">{item.name}</span>
+                            <span className="text-[10px] text-[#71717a] block">{item.desc}</span>
+                            <span className="text-xs font-black text-black mt-0.5 block">${item.price.toFixed(2)}</span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => addToCart(item)}
+                            className="bg-black hover:bg-[#27272a] text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition shadow-sm flex items-center gap-1"
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>ADD</span>
+                          </button>
                         </div>
                       ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
-                {/* Pickup Location */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-[#71717a] font-['JetBrains_Mono',monospace] tracking-wider uppercase mb-1">
-                    Pickup Store Location
-                  </label>
+                {/* Cart Drawer */}
+                {cart.length > 0 && (
+                  <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between text-xs font-bold text-emerald-950">
+                      <span className="flex items-center gap-1.5">
+                        <ShoppingCart className="w-4 h-4 text-emerald-700" />
+                        Shopping Basket ({cart.length} items)
+                      </span>
+                      <span>Total: ${cartTotal.toFixed(2)}</span>
+                    </div>
+
+                    <div className="space-y-1 text-[11px] text-emerald-900">
+                      {cart.map((c) => (
+                        <div key={c.item.id} className="flex items-center justify-between">
+                          <span>{c.quantity}x {c.item.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span>${(c.item.price * c.quantity).toFixed(2)}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeFromCart(c.item.id)}
+                              className="text-red-500 hover:text-red-700 font-bold"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Delivery Doorstep Pin Input */}
+                <div className="pt-2 border-t border-[#e4e4e7] space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-[#71717a] uppercase">
+                      Deliver To (Doorstep Pin)
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={handleUseMyLocation}
+                      disabled={detectingGps}
+                      className="bg-[#f0f0f2] hover:bg-black hover:text-white text-black text-[10px] font-bold px-2 py-0.5 rounded transition border border-[#e4e4e7]"
+                    >
+                      <span>📍 MY LOCATION</span>
+                    </button>
+                  </div>
+
                   <input
                     type="text"
-                    required
-                    value={pickupAddress}
-                    onChange={(e) => setPickupAddress(e.target.value)}
-                    className="w-full bg-[#f0f0f2] border border-[#e4e4e7] rounded-xl px-3.5 py-2 text-black text-xs font-['JetBrains_Mono',monospace] focus:outline-none focus:border-black transition"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-[#71717a] font-['JetBrains_Mono',monospace] tracking-wider uppercase mb-1">
-                    Total Amount ($)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={totalAmount}
-                    onChange={(e) => setTotalAmount(e.target.value)}
-                    className="w-full bg-[#f0f0f2] border border-[#e4e4e7] rounded-xl px-3.5 py-2 text-black text-xs font-['JetBrains_Mono',monospace] focus:outline-none focus:border-black transition"
+                    value={addressInput}
+                    onChange={(e) => handleAddressSearch(e.target.value)}
+                    placeholder="Type street or click doorstep on map..."
+                    className="w-full bg-[#f0f0f2] border border-[#e4e4e7] rounded-xl px-3 py-2 text-xs text-black focus:outline-none focus:border-black"
                   />
                 </div>
 
                 <button
-                  type="submit"
-                  className="w-full mt-2 bg-black hover:bg-[#27272a] text-white text-xs font-bold font-['JetBrains_Mono',monospace] tracking-widest uppercase py-3 rounded-xl transition duration-150 flex items-center justify-center gap-2 shadow-sm"
+                  type="button"
+                  onClick={handlePlaceOrder}
+                  className="w-full bg-black hover:bg-[#27272a] text-white text-xs font-bold uppercase py-3 rounded-xl transition flex items-center justify-center gap-2 shadow-sm"
                 >
-                  <span>CONFIRM & PLACE ORDER</span>
+                  <span>PLACE STORE ORDER (${cartTotal.toFixed(2)})</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
-              </form>
-            </div>
+              </div>
+            )}
+
+            {/* 📍 CUSTOM PIN ORDER (MANUAL FORM) */}
+            {activeTab === 'CUSTOM_PIN' && isCreatingOrder && (
+              <div className="bg-[#f8f8f9] border border-black rounded-2xl p-6 shadow-md space-y-3">
+                <h2 className="text-sm font-black text-black uppercase tracking-wider flex items-center gap-2">
+                  <Package className="w-4 h-4" />
+                  Custom Package Order
+                </h2>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-[#71717a] uppercase mb-1">
+                    Pickup Location
+                  </label>
+                  <input
+                    type="text"
+                    value={pickupAddress}
+                    onChange={(e) => setPickupAddress(e.target.value)}
+                    className="w-full bg-[#f0f0f2] border border-[#e4e4e7] rounded-xl px-3 py-2 text-xs text-black focus:outline-none focus:border-black"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-[#71717a] uppercase mb-1">
+                    Delivery Address
+                  </label>
+                  <input
+                    type="text"
+                    value={addressInput}
+                    onChange={(e) => handleAddressSearch(e.target.value)}
+                    className="w-full bg-[#f0f0f2] border border-[#e4e4e7] rounded-xl px-3 py-2 text-xs text-black focus:outline-none focus:border-black"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handlePlaceOrder}
+                  className="w-full mt-2 bg-black hover:bg-[#27272a] text-white text-xs font-bold uppercase py-3 rounded-xl transition flex items-center justify-center gap-2 shadow-sm"
+                >
+                  <span>CONFIRM & PLACE CUSTOM ORDER</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
 
             {/* Orders Feed */}
             <div className="bg-[#f8f8f9] border border-[#e4e4e7] rounded-2xl p-6 shadow-md space-y-3">
-              <h2 className="text-sm font-black text-black uppercase tracking-wider font-['JetBrains_Mono',monospace] mb-2 flex items-center justify-between">
-                <span>Recent Orders ({filteredOrders.length})</span>
+              <h2 className="text-sm font-black text-black uppercase tracking-wider mb-2 flex items-center justify-between">
+                <span>Recent Orders ({orders.length})</span>
                 <Clock className="w-4 h-4 text-[#71717a]" />
               </h2>
 
-              <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
-                {filteredOrders.length === 0 ? (
-                  <p className="text-xs text-[#a1a1aa] font-['JetBrains_Mono',monospace] text-center py-6">
-                    NO ORDERS FOUND
-                  </p>
+              <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+                {orders.length === 0 ? (
+                  <p className="text-xs text-[#a1a1aa] text-center py-6">NO ORDERS FOUND</p>
                 ) : (
-                  filteredOrders.map((ord) => (
+                  orders.map((ord) => (
                     <div
                       key={ord.id}
                       onClick={() => {
@@ -460,21 +597,17 @@ export const CustomerDashboard: React.FC = () => {
                         setIsCreatingOrder(false);
                         setDriverLocation(null);
                       }}
-                      className={`p-3.5 rounded-xl border cursor-pointer transition font-['JetBrains_Mono',monospace] ${
+                      className={`p-3.5 rounded-xl border cursor-pointer transition ${
                         selectedOrder?.id === ord.id && !isCreatingOrder
                           ? 'bg-black text-white border-black shadow-sm'
                           : 'bg-[#f0f0f2] text-black border-[#e4e4e7] hover:border-[#d4d4d8]'
                       }`}
                     >
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-xs font-bold">
-                          #{ord.id.slice(0, 8).toUpperCase()}
-                        </span>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-bold">#{ord.id.slice(0, 8).toUpperCase()}</span>
                         <span
-                          className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider ${
-                            selectedOrder?.id === ord.id && !isCreatingOrder
-                              ? 'bg-white text-black'
-                              : 'bg-black text-white'
+                          className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase ${
+                            selectedOrder?.id === ord.id && !isCreatingOrder ? 'bg-white text-black' : 'bg-black text-white'
                           }`}
                         >
                           {ord.status}
@@ -488,7 +621,7 @@ export const CustomerDashboard: React.FC = () => {
                       <div className="flex items-center justify-between text-xs font-bold mt-2 pt-2 border-t border-[#e4e4e7]/30">
                         <span>${ord.totalAmount.toFixed(2)}</span>
                         {ord.deliveryOtp && (
-                          <span className={`text-xs tracking-wider ${selectedOrder?.id === ord.id && !isCreatingOrder ? 'text-white' : 'text-black'}`}>
+                          <span className={`${selectedOrder?.id === ord.id && !isCreatingOrder ? 'text-white' : 'text-black'}`}>
                             PIN: {ord.deliveryOtp}
                           </span>
                         )}
@@ -501,8 +634,8 @@ export const CustomerDashboard: React.FC = () => {
           </div>
 
           {/* Right Column: Interactive Map (7 cols) */}
-          <div className="lg:col-span-7 space-y-6">
-            <div className="bg-[#f8f8f9] border border-[#e4e4e7] rounded-2xl p-6 shadow-md space-y-4 font-['JetBrains_Mono',monospace]">
+          <div className="lg:col-span-7 space-y-6 font-['JetBrains_Mono',monospace]">
+            <div className="bg-[#f8f8f9] border border-[#e4e4e7] rounded-2xl p-6 shadow-md space-y-4">
               {selectedOrder && !isCreatingOrder ? (
                 <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-[#f0f0f2] rounded-xl border border-[#e4e4e7]">
                   <div>
@@ -529,16 +662,25 @@ export const CustomerDashboard: React.FC = () => {
                     </div>
                   )}
                 </div>
-              ) : (null)}
+              ) : (
+                <div className="flex items-center justify-between p-2 bg-[#f0f0f2] rounded-xl border border-[#e4e4e7] text-xs">
+                  <span className="text-black font-bold">
+                    📍 {selectedStore ? `Ordering from: ${selectedStore.name}` : 'Click map to choose doorstep pin'}
+                  </span>
+                  <span className="text-[10px] bg-black text-white px-2 py-0.5 rounded font-bold">
+                    PRECISION MAP
+                  </span>
+                </div>
+              )}
 
               {/* Leaflet Precision Map */}
-              <div className="h-[460px] w-full rounded-xl overflow-hidden border border-[#e4e4e7] relative shadow-inner">
+              <div className="h-[520px] w-full rounded-xl overflow-hidden border border-[#e4e4e7] relative shadow-inner">
                 <MapContainer
                   center={[
                     !isCreatingOrder && selectedOrder ? selectedOrder.deliveryLat : deliveryLat,
                     !isCreatingOrder && selectedOrder ? selectedOrder.deliveryLng : deliveryLng
                   ]}
-                  zoom={15}
+                  zoom={14}
                   scrollWheelZoom={true}
                   className="w-full h-full cursor-crosshair"
                 >
@@ -547,10 +689,10 @@ export const CustomerDashboard: React.FC = () => {
                       !isCreatingOrder && selectedOrder ? selectedOrder.deliveryLat : deliveryLat,
                       !isCreatingOrder && selectedOrder ? selectedOrder.deliveryLng : deliveryLng
                     ]} 
-                    zoom={15}
+                    zoom={14}
                   />
 
-                  {/* Click on Map to Drop Pin (Active when in New Order Mode) */}
+                  {/* Click Map to Drop Doorstep Pin */}
                   <MapClickHandler 
                     onLocationSelect={handleMapLocationSelect} 
                     isInteractive={isCreatingOrder} 
@@ -561,7 +703,7 @@ export const CustomerDashboard: React.FC = () => {
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   />
 
-                  {/* Pickup Marker */}
+                  {/* Store Pickup Marker */}
                   <Marker 
                     position={[
                       !isCreatingOrder && selectedOrder ? selectedOrder.pickupLat : pickupLat,
@@ -569,10 +711,10 @@ export const CustomerDashboard: React.FC = () => {
                     ]} 
                     icon={pickupIcon}
                   >
-                    <Popup>🟢 Pickup Location</Popup>
+                    <Popup>🏬 Store: {selectedStore ? selectedStore.name : pickupAddress}</Popup>
                   </Marker>
 
-                  {/* Delivery Marker (Draggable with 100% precision!) */}
+                  {/* Customer Doorstep Marker */}
                   <Marker 
                     position={[
                       !isCreatingOrder && selectedOrder ? selectedOrder.deliveryLat : deliveryLat,
@@ -591,7 +733,7 @@ export const CustomerDashboard: React.FC = () => {
                       },
                     }}
                   >
-                    <Popup>🔴 Delivery Pinpoint (Drag to adjust)</Popup>
+                    <Popup>🔴 Your Delivery Doorstep (Drag to adjust)</Popup>
                   </Marker>
 
                   {/* Live Moving Driver Marker */}
@@ -611,13 +753,6 @@ export const CustomerDashboard: React.FC = () => {
                     />
                   )}
                 </MapContainer>
-
-                {driverLocation && !isCreatingOrder && (
-                  <div className="absolute top-3 right-3 z-[1000] bg-black text-white px-3 py-1.5 rounded-lg flex items-center gap-2 text-[11px] font-bold shadow-md">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                    LIVE DRIVER GPS CONNECTED
-                  </div>
-                )}
               </div>
             </div>
           </div>
