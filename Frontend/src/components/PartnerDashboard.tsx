@@ -14,7 +14,8 @@ import {
   Plus, 
   Trash2, 
   AlertCircle,
-  Power
+  Power,
+  Navigation
 } from 'lucide-react';
 
 const storeIcon = new L.Icon({
@@ -172,6 +173,22 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
         }
       })
       .catch(() => {});
+  };
+    // 3b. Use Live GPS in Relocation Modal
+  const handleUseCurrentLocationForRelocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          handleRelocationMapSelect(pos.coords.latitude, pos.coords.longitude);
+        },
+        () => {
+          alert('Could not retrieve device location. Make sure location permissions are enabled.');
+        },
+        { enableHighAccuracy: true, timeout: 5000 }
+      );
+    } else {
+      alert('Geolocation not supported by this browser.');
+    }
   };
 
   // 4. Submit Relocation Request
@@ -636,17 +653,35 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
         {showRelocationModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[3000] flex items-center justify-center p-4 font-['JetBrains_Mono',monospace]">
             <div className="bg-[#f8f8f9] border border-black rounded-2xl p-6 max-w-2xl w-full shadow-2xl space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-black uppercase text-black flex items-center gap-2">
                     <Unlock className="w-4 h-4" />
                     Select New Store Location on Map
                   </h3>
                   <p className="text-[10px] text-[#71717a] mt-0.5">
-                    CLICK MAP OR DRAG RED PIN TO PINPOINT YOUR NEW STORE PREMISES
+                    CLICK MAP OR USE GPS TO PINPOINT YOUR NEW SHOP ENTRANCE
                   </p>
                 </div>
-                <button onClick={() => setShowRelocationModal(false)} className="text-black font-bold p-1 hover:bg-[#e4e4e7] rounded-lg">✕</button>
+
+                <div className="flex items-center gap-2">
+                  {/* 📍 1-CLICK CURRENT LOCATION BUTTON */}
+                  <button
+                    type="button"
+                    onClick={handleUseCurrentLocationForRelocation}
+                    className="bg-black hover:bg-[#27272a] text-white text-[10px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition shadow-sm"
+                  >
+                    <Navigation className="w-3 h-3 text-emerald-400" />
+                    <span>MY CURRENT GPS</span>
+                  </button>
+
+                  <button 
+                    onClick={() => setShowRelocationModal(false)} 
+                    className="text-black font-bold p-1 hover:bg-[#e4e4e7] rounded-lg"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
 
               {/* Interactive Modal Leaflet Map */}
