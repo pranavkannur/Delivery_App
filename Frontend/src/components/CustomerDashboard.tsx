@@ -341,6 +341,11 @@ export const CustomerDashboard: React.FC = () => {
             alert(err.response?.data?.error || 'Payment verification failed');
           }
         },
+        prefill: {
+          name: 'Delivery Customer',
+          email: 'customer@delivery.com',
+          contact: '9876543210',
+        },
         theme: {
           color: '#000000',
         },
