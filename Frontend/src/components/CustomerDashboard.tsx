@@ -74,6 +74,10 @@ export const CustomerDashboard: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [cart, setCart] = useState<{ item: any; quantity: number }[]>([]);
 
+  // 💳 Payment State: 'RAZORPAY' | 'CASH_ON_DELIVERY'
+  const [paymentMethod, setPaymentMethod] = useState<'RAZORPAY' | 'CASH_ON_DELIVERY'>('RAZORPAY');
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
   // Address and Coordinates State
   const [addressInput, setAddressInput] = useState('Select address on map or click My Location');
   const [pickupAddress, setPickupAddress] = useState('Store Pickup');
@@ -112,7 +116,6 @@ export const CustomerDashboard: React.FC = () => {
   useEffect(() => {
     fetchData();
 
-    // Auto-detect user's device location on launch
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition((pos) => {
         handleMapLocationSelect(pos.coords.latitude, pos.coords.longitude);
@@ -219,7 +222,22 @@ export const CustomerDashboard: React.FC = () => {
     setCart([]);
   };
 
-  // Place Order
+  // Dynamically load Razorpay SDK
+  const loadRazorpayScript = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      if ((window as any).Razorpay) {
+        resolve(true);
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  // Single, Clean Handle Place Order
   const handlePlaceOrder = async () => {
     if (activeTab === 'EXPLORE') {
       if (!selectedStore) {
@@ -236,31 +254,104 @@ export const CustomerDashboard: React.FC = () => {
       }
     }
 
+    const itemsToOrder = activeTab === 'EXPLORE' 
+      ? cart.map((c) => ({ name: c.item.name, quantity: c.quantity, price: c.item.price }))
+      : [{ name: 'Custom Package Delivery', quantity: 1, price: 25.0 }];
+
+    const total = activeTab === 'EXPLORE' ? cartTotal : 25.0;
+
+    // A. Cash on Delivery Flow
+    if (paymentMethod === 'CASH_ON_DELIVERY') {
+      try {
+        setIsProcessingPayment(true);
+        const res = await api.post('/payments/verify', {
+          pickupAddress,
+          deliveryAddress: addressInput,
+          pickupLat,
+          pickupLng,
+          deliveryLat,
+          deliveryLng,
+          items: itemsToOrder,
+          totalAmount: total,
+          paymentMethod: 'CASH_ON_DELIVERY',
+        });
+        await fetchData();
+        setSelectedOrder(res.data.order);
+        setIsCreatingOrder(false);
+        setCart([]);
+        alert('📦 Order Placed with Cash on Delivery! Pay the driver upon delivery.');
+      } catch (err: any) {
+        alert(err.response?.data?.error || 'Failed to place order');
+      } finally {
+        setIsProcessingPayment(false);
+      }
+      return;
+    }
+
+    // B. Razorpay (UPI / Card / NetBanking) Flow
     try {
-      const itemsToOrder = activeTab === 'EXPLORE' 
-        ? cart.map((c) => ({ name: c.item.name, quantity: c.quantity, price: c.item.price }))
-        : [{ name: 'Custom Package Delivery', quantity: 1, price: 25.0 }];
+      setIsProcessingPayment(true);
+      const isLoaded = await loadRazorpayScript();
+      if (!isLoaded) {
+        alert('Failed to load Razorpay SDK. Please check your internet connection.');
+        setIsProcessingPayment(false);
+        return;
+      }
 
-      const total = activeTab === 'EXPLORE' ? cartTotal : 25.0;
-
-      const res = await api.post('/orders', {
-        pickupAddress,
-        deliveryAddress: addressInput,
-        pickupLat,
-        pickupLng,
-        deliveryLat,
-        deliveryLng,
-        items: itemsToOrder,
-        totalAmount: total,
+      // 1. Create order on backend
+      const orderInitRes = await api.post('/payments/create-order', {
+        amount: total,
       });
 
-      await fetchData();
-      setSelectedOrder(res.data.order);
-      setIsCreatingOrder(false);
-      setCart([]);
-      alert('🎉 Order Placed with the Store!');
+      const { razorpayOrderId, amount, currency, keyId } = orderInitRes.data;
+
+      // 2. Open Official Razorpay Checkout Popup
+      const options = {
+        key: keyId,
+        amount,
+        currency,
+        name: 'QuickDelivery Express',
+        description: `Order from ${selectedStore ? selectedStore.name : 'Store'}`,
+        image: 'https://cdn-icons-png.flaticon.com/512/2830/2830312.png',
+        order_id: razorpayOrderId,
+        handler: async function (response: any) {
+          try {
+            // 3. Verify Payment Signature on Backend & Dispatches to Drivers
+            const verifyRes = await api.post('/payments/verify', {
+              pickupAddress,
+              deliveryAddress: addressInput,
+              pickupLat,
+              pickupLng,
+              deliveryLat,
+              deliveryLng,
+              items: itemsToOrder,
+              totalAmount: total,
+              paymentMethod: 'RAZORPAY',
+              razorpayOrderId: response.razorpay_order_id || razorpayOrderId,
+              razorpayPaymentId: response.razorpay_payment_id || `pay_${Date.now()}`,
+              razorpaySignature: response.razorpay_signature || 'test_signature',
+            });
+
+            await fetchData();
+            setSelectedOrder(verifyRes.data.order);
+            setIsCreatingOrder(false);
+            setCart([]);
+            alert('🎉 Payment Verified! Order Dispatched to Drivers.');
+          } catch (err: any) {
+            alert(err.response?.data?.error || 'Payment verification failed');
+          }
+        },
+        theme: {
+          color: '#000000',
+        },
+      };
+
+      const razorpayInstance = new (window as any).Razorpay(options);
+      razorpayInstance.open();
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to place order');
+      alert(err.response?.data?.error || 'Failed to initialize Razorpay');
+    } finally {
+      setIsProcessingPayment(false);
     }
   };
 
@@ -514,16 +605,50 @@ export const CustomerDashboard: React.FC = () => {
                   />
                 </div>
 
+                {/* 💳 Payment Method Selector */}
+                <div className="pt-2 border-t border-[#e4e4e7] space-y-2">
+                  <label className="text-[11px] font-bold text-[#71717a] uppercase block">
+                    Payment Method
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('RAZORPAY')}
+                      className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                        paymentMethod === 'RAZORPAY'
+                          ? 'bg-black text-white border-black shadow-sm'
+                          : 'bg-[#f0f0f2] text-black border-[#e4e4e7] hover:border-black'
+                      }`}
+                    >
+                      <span>💳 RAZORPAY / UPI</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('CASH_ON_DELIVERY')}
+                      className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                        paymentMethod === 'CASH_ON_DELIVERY'
+                          ? 'bg-black text-white border-black shadow-sm'
+                          : 'bg-[#f0f0f2] text-black border-[#e4e4e7] hover:border-black'
+                      }`}
+                    >
+                      <span>💵 CASH ON DELIVERY</span>
+                    </button>
+                  </div>
+                </div>
+
                 <button
                   type="button"
-                  disabled={selectedStore && !selectedStore.isOpen}
+                  disabled={(selectedStore && !selectedStore.isOpen) || isProcessingPayment}
                   onClick={handlePlaceOrder}
                   className="w-full bg-black hover:bg-[#27272a] text-white text-xs font-bold uppercase py-3 rounded-xl transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
                 >
                   <span>
-                    {selectedStore && !selectedStore.isOpen 
+                    {isProcessingPayment 
+                      ? 'PROCESSING PAYMENT...' 
+                      : selectedStore && !selectedStore.isOpen 
                       ? 'STORE IS CURRENTLY CLOSED' 
-                      : `PLACE STORE ORDER ($${cartTotal.toFixed(2)})`}
+                      : `PAY & PLACE ORDER ($${cartTotal.toFixed(2)})`}
                   </span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
@@ -599,7 +724,15 @@ export const CustomerDashboard: React.FC = () => {
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-bold">#{ord.id}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold">#{ord.id}</span>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded uppercase ${
+                            ord.paymentStatus === 'PAID' ? 'bg-emerald-600 text-white' : 'bg-amber-600 text-white'
+                          }`}>
+                            {ord.paymentStatus === 'PAID' ? 'PAID' : 'COD'}
+                          </span>
+                        </div>
+
                         <span
                           className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase ${
                             selectedOrder?.id === ord.id && !isCreatingOrder ? 'bg-white text-black' : 'bg-black text-white'

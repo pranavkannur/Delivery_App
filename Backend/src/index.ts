@@ -7,6 +7,7 @@ import orderRoutes from './routes/orderRoutes';
 import adminRoutes from './routes/adminRoutes';
 import storeRoutes from './routes/storeRoutes';
 import { initSocket } from './services/socketService';
+import paymentRoutes from './routes/paymentRoutes';
 
 const app = express();
 const server = http.createServer(app);
@@ -21,6 +22,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/stores', storeRoutes);
+app.use('/api/payments', paymentRoutes);
 
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });

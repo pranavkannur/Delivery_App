@@ -29,7 +29,16 @@ enum OrderStatus {
   DELIVERED
   CANCELLED
 }
+enum PaymentMethod {
+  RAZORPAY
+  CASH_ON_DELIVERY
+}
 
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
 // User model for customers, drivers, and admins
 model User {
   id        String   @id @default(uuid())
@@ -96,26 +105,32 @@ model Driver {
 
 // Order model for deliveries
 model Order {
-  id              String        @id 
-  customerId      String
-  customer        User          @relation("CustomerOrders", fields: [customerId], references: [id])
-  driverId        String?
-  driver          Driver?       @relation("DriverDeliveries", fields: [driverId], references: [id])
-  status          OrderStatus   @default(PENDING)
-  pickupAddress   String
-  deliveryAddress String
-  pickupLat       Float
-  pickupLng       Float
-  deliveryLat     Float
-  deliveryLng     Float
-  totalAmount     Float
-  items           Json          
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  deliveryOtp     String? 
-  trackingLogs    TrackingLog[]
-}
+  id                String        @id 
+  customerId        String
+  customer          User          @relation("CustomerOrders", fields: [customerId], references: [id])
+  driverId          String?
+  driver            Driver?       @relation("DriverDeliveries", fields: [driverId], references: [id])
+  status            OrderStatus   @default(PENDING)
+  pickupAddress     String
+  deliveryAddress   String
+  pickupLat         Float
+  pickupLng         Float
+  deliveryLat       Float
+  deliveryLng       Float
+  totalAmount       Float
+  items             Json          
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  deliveryOtp       String? 
 
+  // 💳 Payment Gateway Fields
+  paymentMethod     PaymentMethod @default(RAZORPAY)
+  paymentStatus     PaymentStatus @default(PENDING)
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+
+  trackingLogs      TrackingLog[]
+}
 // History logs of driver locations for an active order
 model TrackingLog {
   id        String   @id @default(uuid())

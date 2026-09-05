@@ -39,6 +39,13 @@ export interface Order {
   deliveryOtp?: string;
   createdAt: string;
   updatedAt: string;
+
+  // 💳 Payment Fields
+  paymentMethod?: 'RAZORPAY' | 'CASH_ON_DELIVERY';
+  paymentStatus?: 'PENDING' | 'PAID' | 'FAILED';
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
+
   customer?: {
     name: string;
     phone?: string;

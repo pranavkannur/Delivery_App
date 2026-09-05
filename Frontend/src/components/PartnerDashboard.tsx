@@ -90,6 +90,10 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
   const shopMarkerRef = useRef<any>(null);
   const relocationMarkerRef = useRef<any>(null);
 
+    // Payment Method: 'RAZORPAY' | 'CASH_ON_DELIVERY'
+  const [paymentMethod, setPaymentMethod] = useState<'RAZORPAY' | 'CASH_ON_DELIVERY'>('RAZORPAY');
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
   const fetchStoreData = async () => {
     try {
       setLoading(true);
@@ -133,6 +137,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
     fetchStoreData();
   }, []);
 
+  
   // 1. Toggle Store Status (Accepting Orders vs Closed)
   const handleToggleStoreStatus = async () => {
     try {
@@ -155,7 +160,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
         longitude: shopLng,
       });
       await fetchStoreData();
-      alert('🔒 Shop Location Successfully Locked! It cannot be changed without Admin approval.');
+      alert(' Shop Location Successfully Locked! It cannot be changed without Admin approval.');
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to lock location');
     }
@@ -203,7 +208,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
       });
       setShowRelocationModal(false);
       await fetchStoreData();
-      alert('📝 Relocation request submitted to Admin for approval!');
+      alert(' Relocation request submitted to Admin for approval!');
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to submit relocation request');
     }
@@ -223,7 +228,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
       setNewItemPrice('');
       setNewItemDesc('');
       await fetchStoreData();
-      alert('✅ Menu item added to your store!');
+      alert(' Menu item added to your store!');
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to add item');
     }
@@ -255,7 +260,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
         totalAmount: parseFloat(dispatchItemPrice),
       });
       await fetchStoreData();
-      alert('📦 Order Dispatched to Drivers with your exact Shop GPS!');
+      alert('Order Dispatched to Drivers with your exact Shop GPS!');
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to dispatch order');
     }
@@ -289,7 +294,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* 🟢 STORE OPEN / CLOSED TOGGLE SWITCH */}
+            {/*  STORE OPEN / CLOSED TOGGLE SWITCH */}
             <button
               onClick={handleToggleStoreStatus}
               disabled={isTogglingStatus}
@@ -300,7 +305,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
               }`}
             >
               <Power className="w-3.5 h-3.5" />
-              <span>{isOpen ? '🟢 ACCEPTING ORDERS' : '🔴 STORE CLOSED'}</span>
+              <span>{isOpen ? 'ACCEPTING ORDERS' : 'STORE CLOSED'}</span>
             </button>
 
             <button
@@ -556,7 +561,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
                     Store Location Pinpoint
                   </h2>
                   <p className="text-[10px] text-[#71717a] mt-0.5">
-                    {isLocked ? '🔒 LOCATION LOCKED — SUBMIT REQUEST TO ADMIN TO RELOCATE' : 'CLICK MAP OR DRAG PIN TO YOUR SHOP ENTRANCE'}
+                    {isLocked ? ' LOCATION LOCKED — SUBMIT REQUEST TO ADMIN TO RELOCATE' : 'CLICK MAP OR DRAG PIN TO YOUR SHOP ENTRANCE'}
                   </p>
                 </div>
               </div>

@@ -1,42 +1,54 @@
-import React, { useState, useEffect } from 'react';
-import api from '../services/api';
-import { socket } from '../services/socket';
-import type { Order, User } from '../types';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
-import L from 'leaflet';
-import { 
-  Truck, 
-  CheckCircle2, 
-  Navigation, 
-  RefreshCw, 
-  KeyRound, 
-  AlertCircle, 
-  ArrowRight, 
-  Package, 
+import React, { useState, useEffect } from "react";
+import api from "../services/api";
+import { socket } from "../services/socket";
+import type { Order, User } from "../types";
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Popup,
+  Polyline,
+  useMap,
+} from "react-leaflet";
+import L from "leaflet";
+import {
+  Truck,
+  CheckCircle2,
+  Navigation,
+  RefreshCw,
+  KeyRound,
+  AlertCircle,
+  ArrowRight,
+  Package,
   Radio,
-  MapPin
-} from 'lucide-react';
+  MapPin,
+} from "lucide-react";
 
 const pickupIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-black.png',
+  iconUrl:
+    "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-black.png",
   iconSize: [25, 41],
   iconAnchor: [12, 41],
 });
 
 const deliveryIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+  iconUrl:
+    "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
   iconSize: [25, 41],
   iconAnchor: [12, 41],
 });
 
 const driverIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+  iconUrl:
+    "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png",
   iconSize: [25, 41],
   iconAnchor: [12, 41],
 });
 
 // Helper: Auto-center map on moving driver
-const MapFollowDriver: React.FC<{ center: [number, number] }> = ({ center }) => {
+const MapFollowDriver: React.FC<{ center: [number, number] }> = ({
+  center,
+}) => {
   const map = useMap();
   useEffect(() => {
     map.setView(center, 15);
@@ -54,23 +66,28 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
   const [otpInput, setOtpInput] = useState<{ [orderId: string]: string }>({});
   const [isSimulatingGps, setIsSimulatingGps] = useState(false);
   const [isRealGpsBroadcasting, setIsRealGpsBroadcasting] = useState(false);
-  const [driverPosition, setDriverPosition] = useState<{ lat: number; lng: number } | null>(null);
-  const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
+  const [driverPosition, setDriverPosition] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
+  const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>(
+    [],
+  );
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      setError('');
+      setError("");
       const [availRes, myRes] = await Promise.all([
-        api.get('/orders/available'),
-        api.get('/orders'),
+        api.get("/orders/available"),
+        api.get("/orders"),
       ]);
       setAvailableOrders(availRes.data.availableOrders);
       setMyOrders(myRes.data.orders);
     } catch {
-      setError('Error fetching orders');
+      setError("Error fetching orders");
     } finally {
       setLoading(false);
     }
@@ -83,36 +100,55 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
       fetchData();
     };
 
-    socket.on('new_order_available', handleNewOrder);
+    socket.on("new_order_available", handleNewOrder);
     return () => {
-      socket.off('new_order_available', handleNewOrder);
+      socket.off("new_order_available", handleNewOrder);
     };
   }, []);
 
-  const activeOrder = myOrders.find((o) => o.status === 'ACCEPTED' || o.status === 'PICKED_UP');
+  const activeOrder = myOrders.find(
+    (o) => o.status === "ACCEPTED" || o.status === "PICKED_UP",
+  );
 
   // Fetch turn-by-turn road route from OSRM
   useEffect(() => {
     if (!activeOrder) return;
 
-    const startLat = driverPosition ? driverPosition.lat : activeOrder.pickupLat;
-    const startLng = driverPosition ? driverPosition.lng : activeOrder.pickupLng;
+    const startLat = driverPosition
+      ? driverPosition.lat
+      : activeOrder.pickupLat;
+    const startLng = driverPosition
+      ? driverPosition.lng
+      : activeOrder.pickupLng;
 
-    const targetLat = activeOrder.status === 'ACCEPTED' ? activeOrder.pickupLat : activeOrder.deliveryLat;
-    const targetLng = activeOrder.status === 'ACCEPTED' ? activeOrder.pickupLng : activeOrder.deliveryLng;
+    const targetLat =
+      activeOrder.status === "ACCEPTED"
+        ? activeOrder.pickupLat
+        : activeOrder.deliveryLat;
+    const targetLng =
+      activeOrder.status === "ACCEPTED"
+        ? activeOrder.pickupLng
+        : activeOrder.deliveryLng;
 
-    fetch(`https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${targetLng},${targetLat}?overview=full&geometries=geojson`)
+    fetch(
+      `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${targetLng},${targetLat}?overview=full&geometries=geojson`,
+    )
       .then((res) => res.json())
       .then((data) => {
         if (data.routes && data.routes.length > 0) {
-          const coords: [number, number][] = data.routes[0].geometry.coordinates.map(
-            (c: [number, number]) => [c[1], c[0]]
-          );
+          const coords: [number, number][] =
+            data.routes[0].geometry.coordinates.map((c: [number, number]) => [
+              c[1],
+              c[0],
+            ]);
           setRouteCoordinates(coords);
         }
       })
       .catch(() => {
-        setRouteCoordinates([[startLat, startLng], [targetLat, targetLng]]);
+        setRouteCoordinates([
+          [startLat, startLng],
+          [targetLat, targetLng],
+        ]);
       });
   }, [activeOrder, driverPosition]);
 
@@ -120,26 +156,26 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
     try {
       await api.put(`/orders/${orderId}/accept`);
       await fetchData();
-      alert('🛵 Order Accepted! Head to the pickup location.');
+      alert("🛵 Order Accepted! Head to the pickup location.");
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to accept order');
+      alert(err.response?.data?.error || "Failed to accept order");
     }
   };
 
   const handleMarkPickedUp = async (orderId: string) => {
     try {
-      await api.put(`/orders/${orderId}/status`, { status: 'PICKED_UP' });
+      await api.put(`/orders/${orderId}/status`, { status: "PICKED_UP" });
       await fetchData();
-      alert('📦 Order Marked as Picked Up! Proceed to deliver to customer.');
+      alert("📦 Order Marked as Picked Up! Proceed to deliver to customer.");
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to update status');
+      alert(err.response?.data?.error || "Failed to update status");
     }
   };
 
   const handleCompleteDelivery = async (orderId: string) => {
     const otp = otpInput[orderId];
     if (!otp) {
-      alert('Please enter the customer PIN/OTP to complete delivery');
+      alert("Please enter the customer PIN/OTP to complete delivery");
       return;
     }
 
@@ -147,9 +183,9 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
       await api.post(`/orders/${orderId}/complete`, { otp });
       await fetchData();
       setDriverPosition(null);
-      alert('🎉 Delivery Handover Verified & Completed!');
+      alert("🎉 Delivery Handover Verified & Completed!");
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Invalid OTP');
+      alert(err.response?.data?.error || "Invalid OTP");
     }
   };
 
@@ -165,12 +201,16 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
         setIsSimulatingGps(false);
       }
 
-      const currentLat = activeOrder.pickupLat + (activeOrder.deliveryLat - activeOrder.pickupLat) * progress;
-      const currentLng = activeOrder.pickupLng + (activeOrder.deliveryLng - activeOrder.pickupLng) * progress;
+      const currentLat =
+        activeOrder.pickupLat +
+        (activeOrder.deliveryLat - activeOrder.pickupLat) * progress;
+      const currentLng =
+        activeOrder.pickupLng +
+        (activeOrder.deliveryLng - activeOrder.pickupLng) * progress;
 
       setDriverPosition({ lat: currentLat, lng: currentLng });
 
-      socket.emit('driver_location_update', {
+      socket.emit("driver_location_update", {
         orderId: activeOrder.id,
         driverId: user.driver?.id || user.id,
         latitude: currentLat,
@@ -186,7 +226,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
     if (!isRealGpsBroadcasting || !activeOrder) return;
 
     if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser');
+      alert("Geolocation is not supported by your browser");
       return;
     }
 
@@ -195,15 +235,15 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
         const { latitude, longitude } = position.coords;
         setDriverPosition({ lat: latitude, lng: longitude });
 
-        socket.emit('driver_location_update', {
+        socket.emit("driver_location_update", {
           orderId: activeOrder.id,
           driverId: user.driver?.id || user.id,
           latitude,
           longitude,
         });
       },
-      (err) => console.error('GPS Watch error:', err),
-      { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
+      (err) => console.error("GPS Watch error:", err),
+      { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 },
     );
 
     return () => navigator.geolocation.clearWatch(watchId);
@@ -212,11 +252,11 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
   return (
     <div className="min-h-[calc(100vh-65px)] bg-[#ececee] p-6 relative font-['Inter',sans-serif]">
       {/* Background Grid */}
-      <div 
+      <div
         className="absolute inset-0 opacity-[0.4] pointer-events-none"
         style={{
           backgroundImage: `linear-gradient(#d4d4d8 1px, transparent 1px), linear-gradient(to right, #d4d4d8 1px, transparent 1px)`,
-          backgroundSize: '24px 24px'
+          backgroundSize: "24px 24px",
         }}
       />
 
@@ -236,7 +276,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
             onClick={fetchData}
             className="bg-[#f8f8f9] hover:bg-black hover:text-white text-[#5D5F5F] p-2.5 rounded-xl border border-[#e4e4e7] transition shadow-sm"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
         </div>
 
@@ -259,31 +299,47 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
                   ORDER #{activeOrder.id.slice(0, 8).toUpperCase()}
                 </h2>
               </div>
-
+              {/* Payment Status Alert for Driver */}
+              {activeOrder.paymentStatus === "PAID" ? (
+                <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 px-3.5 py-2 rounded-xl text-xs font-bold font-['JetBrains_Mono',monospace] flex items-center gap-2 shadow-sm">
+                  <span>✅ PAID ONLINE VIA RAZORPAY — DO NOT COLLECT CASH</span>
+                </div>
+              ) : (
+                <div className="bg-amber-50 border border-amber-300 text-amber-900 px-3.5 py-2 rounded-xl text-xs font-bold font-['JetBrains_Mono',monospace] flex items-center gap-2 shadow-sm">
+                  <span>
+                    💵 COLLECT CASH FROM CUSTOMER: $
+                    {activeOrder.totalAmount.toFixed(2)}
+                  </span>
+                </div>
+              )}
               {/* GPS Broadcasting Controls */}
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setIsRealGpsBroadcasting(!isRealGpsBroadcasting)}
+                  onClick={() =>
+                    setIsRealGpsBroadcasting(!isRealGpsBroadcasting)
+                  }
                   className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold tracking-wider uppercase transition shadow-sm ${
                     isRealGpsBroadcasting
-                      ? 'bg-emerald-600 text-white animate-pulse'
-                      : 'bg-[#f0f0f2] hover:bg-black hover:text-white text-black border border-[#e4e4e7]'
+                      ? "bg-emerald-600 text-white animate-pulse"
+                      : "bg-[#f0f0f2] hover:bg-black hover:text-white text-black border border-[#e4e4e7]"
                   }`}
                 >
                   <Radio className="w-3.5 h-3.5" />
-                  {isRealGpsBroadcasting ? 'BROADCASTING REAL GPS' : 'USE REAL PHONE GPS'}
+                  {isRealGpsBroadcasting
+                    ? "BROADCASTING REAL GPS"
+                    : "USE REAL PHONE GPS"}
                 </button>
 
                 <button
                   onClick={() => setIsSimulatingGps(!isSimulatingGps)}
                   className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold tracking-wider uppercase transition shadow-sm ${
                     isSimulatingGps
-                      ? 'bg-red-600 text-white animate-pulse'
-                      : 'bg-black hover:bg-[#27272a] text-white'
+                      ? "bg-red-600 text-white animate-pulse"
+                      : "bg-black hover:bg-[#27272a] text-white"
                   }`}
                 >
                   <Navigation className="w-3.5 h-3.5" />
-                  {isSimulatingGps ? 'STOP SIMULATION' : 'SIMULATE ROUTE'}
+                  {isSimulatingGps ? "STOP SIMULATION" : "SIMULATE ROUTE"}
                 </button>
               </div>
             </div>
@@ -291,13 +347,17 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-black">
               <div className="p-3.5 bg-[#f0f0f2] rounded-xl border border-[#e4e4e7]">
                 <span className="text-[10px] text-[#71717a] uppercase font-bold block mb-1">
-                  {activeOrder.status === 'ACCEPTED' ? '🟢 Step 1: Head to Pickup' : 'Pickup Completed'}
+                  {activeOrder.status === "ACCEPTED"
+                    ? "🟢 Step 1: Head to Pickup"
+                    : "Pickup Completed"}
                 </span>
                 📍 {activeOrder.pickupAddress}
               </div>
               <div className="p-3.5 bg-[#f0f0f2] rounded-xl border border-[#e4e4e7]">
                 <span className="text-[10px] text-[#71717a] uppercase font-bold block mb-1">
-                  {activeOrder.status === 'PICKED_UP' ? '🔴 Step 2: Head to Delivery' : 'Final Destination'}
+                  {activeOrder.status === "PICKED_UP"
+                    ? "🔴 Step 2: Head to Delivery"
+                    : "Final Destination"}
                 </span>
                 🏁 {activeOrder.deliveryAddress}
               </div>
@@ -308,17 +368,17 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
               <MapContainer
                 center={[
                   driverPosition ? driverPosition.lat : activeOrder.pickupLat,
-                  driverPosition ? driverPosition.lng : activeOrder.pickupLng
+                  driverPosition ? driverPosition.lng : activeOrder.pickupLng,
                 ]}
                 zoom={14}
                 scrollWheelZoom={true}
                 className="w-full h-full"
               >
-                <MapFollowDriver 
+                <MapFollowDriver
                   center={[
                     driverPosition ? driverPosition.lat : activeOrder.pickupLat,
-                    driverPosition ? driverPosition.lng : activeOrder.pickupLng
-                  ]} 
+                    driverPosition ? driverPosition.lng : activeOrder.pickupLng,
+                  ]}
                 />
 
                 <TileLayer
@@ -327,18 +387,27 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
                 />
 
                 {/* Pickup Location Marker */}
-                <Marker position={[activeOrder.pickupLat, activeOrder.pickupLng]} icon={pickupIcon}>
+                <Marker
+                  position={[activeOrder.pickupLat, activeOrder.pickupLng]}
+                  icon={pickupIcon}
+                >
                   <Popup>🟢 Pickup: {activeOrder.pickupAddress}</Popup>
                 </Marker>
 
                 {/* Delivery Location Marker */}
-                <Marker position={[activeOrder.deliveryLat, activeOrder.deliveryLng]} icon={deliveryIcon}>
+                <Marker
+                  position={[activeOrder.deliveryLat, activeOrder.deliveryLng]}
+                  icon={deliveryIcon}
+                >
                   <Popup>🔴 Destination: {activeOrder.deliveryAddress}</Popup>
                 </Marker>
 
                 {/* Driver Live Marker */}
                 {driverPosition && (
-                  <Marker position={[driverPosition.lat, driverPosition.lng]} icon={driverIcon}>
+                  <Marker
+                    position={[driverPosition.lat, driverPosition.lng]}
+                    icon={driverIcon}
+                  >
                     <Popup>🛵 Your Location</Popup>
                   </Marker>
                 )}
@@ -362,7 +431,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
 
             {/* Action Bar */}
             <div className="flex flex-wrap items-center justify-between gap-4 pt-3 border-t border-[#e4e4e7]">
-              {activeOrder.status === 'ACCEPTED' ? (
+              {activeOrder.status === "ACCEPTED" ? (
                 <button
                   onClick={() => handleMarkPickedUp(activeOrder.id)}
                   className="bg-black hover:bg-[#27272a] text-white text-xs font-bold uppercase tracking-wider px-5 py-2.5 rounded-xl transition flex items-center gap-2"
@@ -385,8 +454,13 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
                     type="text"
                     maxLength={4}
                     placeholder="ENTER 4-DIGIT PIN"
-                    value={otpInput[activeOrder.id] || ''}
-                    onChange={(e) => setOtpInput({ ...otpInput, [activeOrder.id]: e.target.value })}
+                    value={otpInput[activeOrder.id] || ""}
+                    onChange={(e) =>
+                      setOtpInput({
+                        ...otpInput,
+                        [activeOrder.id]: e.target.value,
+                      })
+                    }
                     className="w-full bg-[#f0f0f2] border border-[#e4e4e7] rounded-xl pl-8 pr-3 py-2 text-black text-xs font-bold placeholder-[#a1a1aa] focus:outline-none focus:border-black"
                   />
                 </div>
@@ -422,11 +496,19 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
                 >
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-bold text-black">#{ord.id.slice(0, 8).toUpperCase()}</span>
-                      <span className="text-sm font-black text-black">${ord.totalAmount.toFixed(2)}</span>
+                      <span className="text-xs font-bold text-black">
+                        #{ord.id.slice(0, 8).toUpperCase()}
+                      </span>
+                      <span className="text-sm font-black text-black">
+                        ${ord.totalAmount.toFixed(2)}
+                      </span>
                     </div>
-                    <p className="text-xs text-[#5D5F5F] mb-1">📍 From: {ord.pickupAddress}</p>
-                    <p className="text-xs text-[#5D5F5F]">🏁 To: {ord.deliveryAddress}</p>
+                    <p className="text-xs text-[#5D5F5F] mb-1">
+                      📍 From: {ord.pickupAddress}
+                    </p>
+                    <p className="text-xs text-[#5D5F5F]">
+                      🏁 To: {ord.deliveryAddress}
+                    </p>
                   </div>
 
                   <button
