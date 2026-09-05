@@ -37,7 +37,7 @@ export const createRazorpayOrder = async (req: AuthenticatedRequest, res: Respon
         }),
       });
 
-      const orderData = await response.json();
+     const orderData = (await response.json()) as any;
       if (!response.ok) {
         res.status(response.status).json({ error: orderData.error?.description || 'Razorpay order creation failed' });
         return;
