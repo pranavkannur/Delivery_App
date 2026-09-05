@@ -91,8 +91,8 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
   const relocationMarkerRef = useRef<any>(null);
 
     // Payment Method: 'RAZORPAY' | 'CASH_ON_DELIVERY'
-  const [paymentMethod, setPaymentMethod] = useState<'RAZORPAY' | 'CASH_ON_DELIVERY'>('RAZORPAY');
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  //const [paymentMethod, setPaymentMethod] = useState<'RAZORPAY' | 'CASH_ON_DELIVERY'>('RAZORPAY');
+  //const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   const fetchStoreData = async () => {
     try {
