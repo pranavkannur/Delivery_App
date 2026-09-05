@@ -5,6 +5,9 @@ pipeline {
         DOCKER_BUILDKIT = '1'
         DATABASE_URL = credentials('DATABASE_URL')
         JWT_SECRET = credentials('JWT_SECRET')
+        RAZORPAY_KEY_ID = credentials('RAZORPAY_KEY_ID')
+        RAZORPAY_KEY_SECRET = credentials('RAZORPAY_KEY_SECRET')
+
     }
 
     stages {
@@ -30,6 +33,8 @@ pipeline {
 PORT=5000
 DATABASE_URL=${DATABASE_URL}
 JWT_SECRET=${JWT_SECRET}
+RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
+RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
 NODE_ENV=production
 EOF
                 '''
