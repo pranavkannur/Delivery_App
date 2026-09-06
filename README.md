@@ -251,6 +251,3 @@ GitHub Push ──> Webhook ──> Jenkins Pipeline:
 
 ---
 
-## 📄 License
-
-This project is licensed under the [MIT License](LICENSE).
