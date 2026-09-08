@@ -1,31 +1,42 @@
-import React, { useState, useEffect, useRef } from 'react';
-import api from '../services/api';
-import type { User, Order } from '../types';
-import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
-import L from 'leaflet';
-import { 
-  Store, 
-  Package, 
-  RefreshCw, 
-  ArrowRight, 
-  MapPin, 
-  Lock, 
-  Unlock, 
-  Plus, 
-  Trash2, 
+import React, { useState, useEffect, useRef } from "react";
+import api from "../services/api";
+import { socket } from "../services/socket";
+import { VisualAlert, AlertData } from "./VisualAlert";
+import type { User, Order } from "../types";
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Popup,
+  useMap,
+  useMapEvents,
+} from "react-leaflet";
+import L from "leaflet";
+import {
+  Store,
+  Package,
+  RefreshCw,
+  ArrowRight,
+  MapPin,
+  Lock,
+  Unlock,
+  Plus,
+  Trash2,
   AlertCircle,
   Power,
-  Navigation
-} from 'lucide-react';
+  Navigation,
+} from "lucide-react";
 
 const storeIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-black.png',
+  iconUrl:
+    "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-black.png",
   iconSize: [25, 41],
   iconAnchor: [12, 41],
 });
 
 const relocationIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+  iconUrl:
+    "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png",
   iconSize: [25, 41],
   iconAnchor: [12, 41],
 });
@@ -38,10 +49,10 @@ const MapRecenter: React.FC<{ center: [number, number] }> = ({ center }) => {
   return null;
 };
 
-const MapClickHandler: React.FC<{ onSelect: (lat: number, lng: number) => void; isInteractive: boolean }> = ({ 
-  onSelect, 
-  isInteractive 
-}) => {
+const MapClickHandler: React.FC<{
+  onSelect: (lat: number, lng: number) => void;
+  isInteractive: boolean;
+}> = ({ onSelect, isInteractive }) => {
   useMapEvents({
     click(e) {
       if (isInteractive) {
@@ -62,35 +73,36 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
+  const [visualAlert, setVisualAlert] = useState<AlertData | null>(null);
 
   // Shop Coordinates State
-  const [shopAddress, setShopAddress] = useState('');
+  const [shopAddress, setShopAddress] = useState("");
   const [shopLat, setShopLat] = useState<number>(20.5937);
   const [shopLng, setShopLng] = useState<number>(78.9629);
 
   // New Menu Item State
-  const [newItemName, setNewItemName] = useState('');
-  const [newItemPrice, setNewItemPrice] = useState('');
-  const [newItemDesc, setNewItemDesc] = useState('');
+  const [newItemName, setNewItemName] = useState("");
+  const [newItemPrice, setNewItemPrice] = useState("");
+  const [newItemDesc, setNewItemDesc] = useState("");
 
   // Relocation Request Modal State
   const [showRelocationModal, setShowRelocationModal] = useState(false);
-  const [relocationAddress, setRelocationAddress] = useState('');
+  const [relocationAddress, setRelocationAddress] = useState("");
   const [relocationLat, setRelocationLat] = useState<number>(20.5937);
   const [relocationLng, setRelocationLng] = useState<number>(78.9629);
-  const [relocationReason, setRelocationReason] = useState('');
+  const [relocationReason, setRelocationReason] = useState("");
 
   // Dispatch Order Form State
-  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryLat] = useState(20.5937);
   const [deliveryLng] = useState(78.9629);
-  const [dispatchItemName, setDispatchItemName] = useState('');
-  const [dispatchItemPrice, setDispatchItemPrice] = useState('25.00');
+  const [dispatchItemName, setDispatchItemName] = useState("");
+  const [dispatchItemPrice, setDispatchItemPrice] = useState("25.00");
 
   const shopMarkerRef = useRef<any>(null);
   const relocationMarkerRef = useRef<any>(null);
 
-    // Payment Method: 'RAZORPAY' | 'CASH_ON_DELIVERY'
+  // Payment Method: 'RAZORPAY' | 'CASH_ON_DELIVERY'
   //const [paymentMethod, setPaymentMethod] = useState<'RAZORPAY' | 'CASH_ON_DELIVERY'>('RAZORPAY');
   //const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
@@ -98,8 +110,8 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
     try {
       setLoading(true);
       const [storeRes, ordersRes] = await Promise.all([
-        api.get('/stores/my-store'),
-        api.get('/orders'),
+        api.get("/stores/my-store"),
+        api.get("/orders"),
       ]);
       const s = storeRes.data.store;
       setStoreData(s);
@@ -115,11 +127,15 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
           navigator.geolocation.getCurrentPosition((pos) => {
             setShopLat(pos.coords.latitude);
             setShopLng(pos.coords.longitude);
-            fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`)
+            fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`,
+            )
               .then((res) => res.json())
               .then((d) => {
                 if (d && d.display_name) {
-                  setShopAddress(d.display_name.split(',').slice(0, 3).join(','));
+                  setShopAddress(
+                    d.display_name.split(",").slice(0, 3).join(","),
+                  );
                 }
               })
               .catch(() => {});
@@ -136,16 +152,33 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
   useEffect(() => {
     fetchStoreData();
   }, []);
+  // 🔔 Listen for real-time incoming orders for this store
+  useEffect(() => {
+    const handleNewOrder = (data: any) => {
+      setVisualAlert({
+        title: '📦 NEW ORDER INCOMING!',
+        message: `Order #${data.orderId} received for $${parseFloat(data.totalAmount).toFixed(2)}. Updating store orders!`,
+        type: 'alert',
+      });
 
-  
+      // Automatically refresh store orders in real time!
+      fetchStoreData();
+    };
+
+    socket.on('new_order_available', handleNewOrder);
+    return () => {
+      socket.off('new_order_available', handleNewOrder);
+    };
+  }, []);
+
   // 1. Toggle Store Status (Accepting Orders vs Closed)
   const handleToggleStoreStatus = async () => {
     try {
       setIsTogglingStatus(true);
-      const res = await api.post('/stores/toggle-status');
+      const res = await api.post("/stores/toggle-status");
       setStoreData(res.data.store);
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to change store status');
+      alert(err.response?.data?.error || "Failed to change store status");
     } finally {
       setIsTogglingStatus(false);
     }
@@ -154,15 +187,17 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
   // 2. Lock Initial Location
   const handleLockInitialLocation = async () => {
     try {
-      await api.post('/stores/location/initial', {
+      await api.post("/stores/location/initial", {
         address: shopAddress || `${user.name} Store`,
         latitude: shopLat,
         longitude: shopLng,
       });
       await fetchStoreData();
-      alert(' Shop Location Successfully Locked! It cannot be changed without Admin approval.');
+      alert(
+        " Shop Location Successfully Locked! It cannot be changed without Admin approval.",
+      );
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to lock location');
+      alert(err.response?.data?.error || "Failed to lock location");
     }
   };
 
@@ -170,16 +205,18 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
   const handleRelocationMapSelect = (lat: number, lng: number) => {
     setRelocationLat(lat);
     setRelocationLng(lng);
-    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+    fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
+    )
       .then((r) => r.json())
       .then((d) => {
         if (d && d.display_name) {
-          setRelocationAddress(d.display_name.split(',').slice(0, 3).join(','));
+          setRelocationAddress(d.display_name.split(",").slice(0, 3).join(","));
         }
       })
       .catch(() => {});
   };
-    // 3b. Use Live GPS in Relocation Modal
+  // 3b. Use Live GPS in Relocation Modal
   const handleUseCurrentLocationForRelocation = () => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -187,12 +224,14 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
           handleRelocationMapSelect(pos.coords.latitude, pos.coords.longitude);
         },
         () => {
-          alert('Could not retrieve device location. Make sure location permissions are enabled.');
+          alert(
+            "Could not retrieve device location. Make sure location permissions are enabled.",
+          );
         },
-        { enableHighAccuracy: true, timeout: 5000 }
+        { enableHighAccuracy: true, timeout: 5000 },
       );
     } else {
-      alert('Geolocation not supported by this browser.');
+      alert("Geolocation not supported by this browser.");
     }
   };
 
@@ -200,7 +239,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
   const handleSubmitRelocationRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.post('/stores/location/request-change', {
+      await api.post("/stores/location/request-change", {
         requestedAddress: relocationAddress || shopAddress,
         requestedLat: relocationLat,
         requestedLng: relocationLng,
@@ -208,9 +247,9 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
       });
       setShowRelocationModal(false);
       await fetchStoreData();
-      alert(' Relocation request submitted to Admin for approval!');
+      alert(" Relocation request submitted to Admin for approval!");
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to submit relocation request');
+      alert(err.response?.data?.error || "Failed to submit relocation request");
     }
   };
 
@@ -219,29 +258,29 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
     e.preventDefault();
     if (!newItemName || !newItemPrice) return;
     try {
-      await api.post('/stores/menu', {
+      await api.post("/stores/menu", {
         name: newItemName,
         price: parseFloat(newItemPrice),
         description: newItemDesc,
       });
-      setNewItemName('');
-      setNewItemPrice('');
-      setNewItemDesc('');
+      setNewItemName("");
+      setNewItemPrice("");
+      setNewItemDesc("");
       await fetchStoreData();
-      alert(' Menu item added to your store!');
+      alert(" Menu item added to your store!");
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to add item');
+      alert(err.response?.data?.error || "Failed to add item");
     }
   };
 
   // 6. Delete Menu Item
   const handleDeleteMenuItem = async (itemId: string) => {
-    if (!confirm('Are you sure you want to remove this item?')) return;
+    if (!confirm("Are you sure you want to remove this item?")) return;
     try {
       await api.delete(`/stores/menu/${itemId}`);
       await fetchStoreData();
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to delete item');
+      alert(err.response?.data?.error || "Failed to delete item");
     }
   };
 
@@ -249,20 +288,26 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
   const handleDispatchOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.post('/orders', {
+      await api.post("/orders", {
         pickupAddress: shopAddress,
         deliveryAddress,
         pickupLat: shopLat,
         pickupLng: shopLng,
         deliveryLat,
         deliveryLng,
-        items: [{ name: dispatchItemName || 'Store Order', quantity: 1, price: parseFloat(dispatchItemPrice) }],
+        items: [
+          {
+            name: dispatchItemName || "Store Order",
+            quantity: 1,
+            price: parseFloat(dispatchItemPrice),
+          },
+        ],
         totalAmount: parseFloat(dispatchItemPrice),
       });
       await fetchStoreData();
-      alert('Order Dispatched to Drivers with your exact Shop GPS!');
+      alert("Order Dispatched to Drivers with your exact Shop GPS!");
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to dispatch order');
+      alert(err.response?.data?.error || "Failed to dispatch order");
     }
   };
 
@@ -272,12 +317,13 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
 
   return (
     <div className="min-h-[calc(100vh-65px)] bg-[#ececee] p-6 relative font-['Inter',sans-serif]">
+      <VisualAlert alert={visualAlert} onClose={() => setVisualAlert(null)} />
       {/* Background Grid */}
-      <div 
+      <div
         className="absolute inset-0 opacity-[0.4] pointer-events-none"
         style={{
           backgroundImage: `linear-gradient(#d4d4d8 1px, transparent 1px), linear-gradient(to right, #d4d4d8 1px, transparent 1px)`,
-          backgroundSize: '24px 24px'
+          backgroundSize: "24px 24px",
         }}
       />
 
@@ -300,25 +346,27 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
               disabled={isTogglingStatus}
               className={`px-4 py-2 rounded-xl text-xs font-bold font-['JetBrains_Mono',monospace] transition flex items-center gap-2 shadow-sm border ${
                 isOpen
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700'
-                  : 'bg-red-600 hover:bg-red-700 text-white border-red-700'
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700"
+                  : "bg-red-600 hover:bg-red-700 text-white border-red-700"
               }`}
             >
               <Power className="w-3.5 h-3.5" />
-              <span>{isOpen ? 'ACCEPTING ORDERS' : 'STORE CLOSED'}</span>
+              <span>{isOpen ? "ACCEPTING ORDERS" : "STORE CLOSED"}</span>
             </button>
 
             <button
               onClick={fetchStoreData}
               className="bg-[#f8f8f9] hover:bg-black hover:text-white text-[#5D5F5F] p-2.5 rounded-xl border border-[#e4e4e7] transition shadow-sm"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw
+                className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+              />
             </button>
           </div>
         </div>
 
         {/* Relocation Request Notice */}
-        {pendingChange && pendingChange.status === 'PENDING' && (
+        {pendingChange && pendingChange.status === "PENDING" && (
           <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between font-['JetBrains_Mono',monospace]">
             <div className="flex items-center gap-3">
               <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
@@ -327,7 +375,8 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
                   Relocation Request Under Admin Review
                 </span>
                 <span className="text-[11px] text-amber-800">
-                  Requested: {pendingChange.requestedAddress} ({pendingChange.reason})
+                  Requested: {pendingChange.requestedAddress} (
+                  {pendingChange.reason})
                 </span>
               </div>
             </div>
@@ -379,9 +428,15 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
               <div className="flex items-center justify-between text-[10px] text-[#71717a]">
                 <div className="flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5 text-black" />
-                  <span>GPS: {shopLat.toFixed(5)}, {shopLng.toFixed(5)}</span>
+                  <span>
+                    GPS: {shopLat.toFixed(5)}, {shopLng.toFixed(5)}
+                  </span>
                 </div>
-                {isLocked && <span className="text-black font-semibold">Protected Coordinates</span>}
+                {isLocked && (
+                  <span className="text-black font-semibold">
+                    Protected Coordinates
+                  </span>
+                )}
               </div>
 
               {!isLocked ? (
@@ -417,12 +472,19 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
                   <Package className="w-4 h-4" />
                   Store Menu ({menuItems.length})
                 </h2>
-                <span className="text-[10px] text-[#71717a]">LIVE FOR CUSTOMERS</span>
+                <span className="text-[10px] text-[#71717a]">
+                  LIVE FOR CUSTOMERS
+                </span>
               </div>
 
               {/* Add Item Form */}
-              <form onSubmit={handleAddMenuItem} className="p-3.5 bg-[#f0f0f2] rounded-xl border border-[#e4e4e7] space-y-2.5">
-                <span className="text-[10px] font-bold uppercase text-black block">Add Product / Dish</span>
+              <form
+                onSubmit={handleAddMenuItem}
+                className="p-3.5 bg-[#f0f0f2] rounded-xl border border-[#e4e4e7] space-y-2.5"
+              >
+                <span className="text-[10px] font-bold uppercase text-black block">
+                  Add Product / Dish
+                </span>
 
                 <div className="grid grid-cols-3 gap-2">
                   <input
@@ -464,7 +526,9 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
               {/* Menu Items List */}
               <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                 {menuItems.length === 0 ? (
-                  <p className="text-xs text-[#a1a1aa] text-center py-6">NO ITEMS IN MENU YET</p>
+                  <p className="text-xs text-[#a1a1aa] text-center py-6">
+                    NO ITEMS IN MENU YET
+                  </p>
                 ) : (
                   menuItems.map((item) => (
                     <div
@@ -472,9 +536,17 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
                       className="p-2.5 bg-[#f0f0f2] rounded-xl border border-[#e4e4e7] flex items-center justify-between"
                     >
                       <div>
-                        <span className="text-xs font-bold text-black block">{item.name}</span>
-                        {item.description && <span className="text-[10px] text-[#71717a] block">{item.description}</span>}
-                        <span className="text-xs font-black text-black block mt-0.5">${item.price.toFixed(2)}</span>
+                        <span className="text-xs font-bold text-black block">
+                          {item.name}
+                        </span>
+                        {item.description && (
+                          <span className="text-[10px] text-[#71717a] block">
+                            {item.description}
+                          </span>
+                        )}
+                        <span className="text-xs font-black text-black block mt-0.5">
+                          ${item.price.toFixed(2)}
+                        </span>
                       </div>
 
                       <button
@@ -561,7 +633,9 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
                     Store Location Pinpoint
                   </h2>
                   <p className="text-[10px] text-[#71717a] mt-0.5">
-                    {isLocked ? ' LOCATION LOCKED — SUBMIT REQUEST TO ADMIN TO RELOCATE' : 'CLICK MAP OR DRAG PIN TO YOUR SHOP ENTRANCE'}
+                    {isLocked
+                      ? " LOCATION LOCKED — SUBMIT REQUEST TO ADMIN TO RELOCATE"
+                      : "CLICK MAP OR DRAG PIN TO YOUR SHOP ENTRANCE"}
                   </p>
                 </div>
               </div>
@@ -575,20 +649,25 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
                   className="w-full h-full"
                 >
                   <MapRecenter center={[shopLat, shopLng]} />
-                  <MapClickHandler 
+                  <MapClickHandler
                     onSelect={(lat, lng) => {
                       if (!isLocked) {
                         setShopLat(lat);
                         setShopLng(lng);
-                        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+                        fetch(
+                          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
+                        )
                           .then((r) => r.json())
                           .then((d) => {
-                            if (d && d.display_name) setShopAddress(d.display_name.split(',').slice(0, 3).join(','));
+                            if (d && d.display_name)
+                              setShopAddress(
+                                d.display_name.split(",").slice(0, 3).join(","),
+                              );
                           })
                           .catch(() => {});
                       }
-                    }} 
-                    isInteractive={!isLocked} 
+                    }}
+                    isInteractive={!isLocked}
                   />
 
                   <TileLayer
@@ -608,17 +687,25 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
                           const latLng = marker.getLatLng();
                           setShopLat(latLng.lat);
                           setShopLng(latLng.lng);
-                          fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latLng.lat}&lon=${latLng.lng}`)
+                          fetch(
+                            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latLng.lat}&lon=${latLng.lng}`,
+                          )
                             .then((r) => r.json())
                             .then((d) => {
-                              if (d && d.display_name) setShopAddress(d.display_name.split(',').slice(0, 3).join(','));
+                              if (d && d.display_name)
+                                setShopAddress(
+                                  d.display_name
+                                    .split(",")
+                                    .slice(0, 3)
+                                    .join(","),
+                                );
                             })
                             .catch(() => {});
                         }
                       },
                     }}
                   >
-                    <Popup>🏬 {shopAddress || 'My Shop'}</Popup>
+                    <Popup>🏬 {shopAddress || "My Shop"}</Popup>
                   </Marker>
                 </MapContainer>
               </div>
@@ -632,16 +719,27 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
 
               <div className="space-y-2.5 max-h-56 overflow-y-auto">
                 {orders.length === 0 ? (
-                  <p className="text-xs text-[#a1a1aa] py-6 text-center">NO ORDERS DISPATCHED YET</p>
+                  <p className="text-xs text-[#a1a1aa] py-6 text-center">
+                    NO ORDERS DISPATCHED YET
+                  </p>
                 ) : (
                   orders.map((ord) => (
-                    <div key={ord.id} className="p-3.5 bg-[#f0f0f2] rounded-xl border border-[#e4e4e7] flex items-center justify-between">
+                    <div
+                      key={ord.id}
+                      className="p-3.5 bg-[#f0f0f2] rounded-xl border border-[#e4e4e7] flex items-center justify-between"
+                    >
                       <div>
-                        <span className="text-xs font-bold text-black">{ord.id}</span>
-                        <p className="text-xs text-[#5D5F5F] truncate max-w-sm mt-0.5">🏁 {ord.deliveryAddress}</p>
+                        <span className="text-xs font-bold text-black">
+                          {ord.id}
+                        </span>
+                        <p className="text-xs text-[#5D5F5F] truncate max-w-sm mt-0.5">
+                          🏁 {ord.deliveryAddress}
+                        </p>
                       </div>
                       <div className="text-right">
-                        <span className="text-xs font-black text-black block">${ord.totalAmount.toFixed(2)}</span>
+                        <span className="text-xs font-black text-black block">
+                          ${ord.totalAmount.toFixed(2)}
+                        </span>
                         <span className="text-[10px] px-2 py-0.5 rounded-md font-bold uppercase bg-black text-white">
                           {ord.status}
                         </span>
@@ -680,8 +778,8 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
                     <span>MY CURRENT GPS</span>
                   </button>
 
-                  <button 
-                    onClick={() => setShowRelocationModal(false)} 
+                  <button
+                    onClick={() => setShowRelocationModal(false)}
                     className="text-black font-bold p-1 hover:bg-[#e4e4e7] rounded-lg"
                   >
                     ✕
@@ -698,7 +796,10 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
                   className="w-full h-full"
                 >
                   <MapRecenter center={[relocationLat, relocationLng]} />
-                  <MapClickHandler onSelect={handleRelocationMapSelect} isInteractive={true} />
+                  <MapClickHandler
+                    onSelect={handleRelocationMapSelect}
+                    isInteractive={true}
+                  />
 
                   <TileLayer
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -726,7 +827,10 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ user }) => {
                 </MapContainer>
               </div>
 
-              <form onSubmit={handleSubmitRelocationRequest} className="space-y-3">
+              <form
+                onSubmit={handleSubmitRelocationRequest}
+                className="space-y-3"
+              >
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="text-[11px] font-bold text-[#71717a] uppercase block mb-1">

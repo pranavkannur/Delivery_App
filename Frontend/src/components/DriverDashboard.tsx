@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import api from "../services/api";
 import { socket } from "../services/socket";
+import { VisualAlert, AlertData } from "./VisualAlert";
 import type { Order, User } from "../types";
 import {
   MapContainer,
@@ -44,6 +45,8 @@ const driverIcon = new L.Icon({
   iconSize: [25, 41],
   iconAnchor: [12, 41],
 });
+
+const [visualAlert, setVisualAlert] = useState<AlertData | null>(null);
 
 // Helper: Auto-center map on moving driver
 const MapFollowDriver: React.FC<{ center: [number, number] }> = ({
@@ -96,8 +99,15 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
   useEffect(() => {
     fetchData();
 
-    const handleNewOrder = () => {
+    const handleNewOrder = (order: any) => {
       fetchData();
+      setVisualAlert({
+        title: "⚡ NEW DELIVERY JOB AVAILABLE",
+        message: order?.pickupAddress
+          ? `Pickup from ${order.pickupAddress}`
+          : "A new order is available to accept!",
+        type: "alert",
+      });
     };
 
     socket.on("new_order_available", handleNewOrder);
@@ -251,6 +261,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
 
   return (
     <div className="min-h-[calc(100vh-65px)] bg-[#ececee] p-6 relative font-['Inter',sans-serif]">
+       <VisualAlert alert={visualAlert} onClose={() => setVisualAlert(null)} />
       {/* Background Grid */}
       <div
         className="absolute inset-0 opacity-[0.4] pointer-events-none"
