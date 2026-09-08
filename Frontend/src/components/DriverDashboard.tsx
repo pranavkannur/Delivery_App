@@ -46,7 +46,7 @@ const driverIcon = new L.Icon({
   iconAnchor: [12, 41],
 });
 
-const [visualAlert, setVisualAlert] = useState<AlertData | null>(null);
+
 
 // Helper: Auto-center map on moving driver
 const MapFollowDriver: React.FC<{ center: [number, number] }> = ({
@@ -78,6 +78,7 @@ export const DriverDashboard: React.FC<DriverDashboardProps> = ({ user }) => {
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [visualAlert, setVisualAlert] = useState<AlertData | null>(null);
 
   const fetchData = async () => {
     try {
