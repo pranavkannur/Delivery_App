@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import api from "../services/api";
 import { socket } from "../services/socket";
-import { VisualAlert, AlertData } from "./VisualAlert";
+import { VisualAlert, type AlertData } from "./VisualAlert";
 import type { Order, User } from "../types";
 import {
   MapContainer,

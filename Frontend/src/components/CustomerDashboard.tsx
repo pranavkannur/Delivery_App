@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import api from "../services/api";
 import { socket } from "../services/socket";
 import type { Order } from "../types";
-import { VisualAlert, AlertData } from "./VisualAlert";
+import { VisualAlert, type AlertData } from "./VisualAlert";
 import {
   MapContainer,
   TileLayer,
