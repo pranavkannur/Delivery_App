@@ -18,7 +18,7 @@ export const initSocket = (httpServer: HTTPServer): SocketIOServer => {
     // Customer or Driver joins a room dedicated to an active order
     socket.on('join_order_room', (orderId: string) => {
       socket.join(`order_${orderId}`);
-      console.log(`📦 Socket ${socket.id} joined room: order_${orderId}`);
+      console.log(` Socket ${socket.id} joined room: order_${orderId}`);
     });
 
     // Driver emits live GPS coordinates
